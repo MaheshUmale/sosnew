@@ -1,0 +1,3 @@
+trade_id,underlying,signal_side,option_symbol,strike,option_type,entry_time,entry_price,exit_time,exit_price,exit_reason,pnl,pnl_pct
+1,NIFTY,LONG,NIFTY 25650 CE 13 JAN 26,25650,CE,09:15,86.95,09:20,68.75,SL_HIT,-18.200000000000003,-20.931569867740084
+2,BANKNIFTY,LONG,BANKNIFTY 59200 CE 27 JAN 26,59200,CE,09:15,644.65,09:20,639.45,TIME_EXIT,-5.199999999999932,-0.8066392616148191

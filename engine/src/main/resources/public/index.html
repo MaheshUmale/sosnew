@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>SOS Monitoring UI</title>
+    <style>
+        body { font-family: sans-serif; }
+        .container { display: flex; }
+        .column { flex: 1; padding: 10px; }
+        #signals, #pnl { border: 1px solid #ccc; min-height: 200px; }
+    </style>
+</head>
+<body>
+    <h1>Scalping Orchestration System (SOS)</h1>
+    <div class="container">
+        <div class="column">
+            <h2>Signals</h2>
+            <div id="signals"></div>
+        </div>
+        <div class="column">
+            <h2>PnL</h2>
+            <div id="pnl"></div>
+        </div>
+    </div>
+    <div id="status" style="padding: 10px; font-weight: bold; color: red;">System Status: Waiting for data...</div>
+    <script>
+        const signals = document.getElementById('signals');
+        const pnl = document.getElementById('pnl');
+
+        const ws = new WebSocket('ws://localhost:8081');
+
+        ws.onopen = () => {
+            console.log('Connected to the UI WebSocket server');
+        };
+
+        ws.onmessage = event => {
+            const data = JSON.parse(event.data);
+
+            if (data.type === 'PNL_UPDATE') {
+                pnl.innerHTML = `<h2>Total PnL: ${data.totalPnl.toFixed(2)}</h2><h3>Open Trades: ${data.openTrades}</h3>`;
+            } else if (data.triggeredMachine) {
+                const signalElement = document.createElement('div');
+                signalElement.innerHTML = `
+                    <h3>New Signal</h3>
+                    <p>Pattern: ${data.triggeredMachine.definition.patternId}</p>
+                    <p>Symbol: ${data.triggeredMachine.state.symbol}</p>
+                `;
+                signals.appendChild(signalElement);
+            } else if (data.type === 'MARKET_UPDATE' || data.type === 'CANDLE_UPDATE') {
+                 // Blink or update a status indicator
+                 const statusDiv = document.getElementById('status');
+                 if (statusDiv) {
+                     statusDiv.innerText = `System Live: Last Update at ${new Date(data.timestamp).toLocaleTimeString()} for ${data.symbol}`;
+                     statusDiv.style.color = 'green';
+                 }
+            }
+        };
+
+        ws.onclose = () => {
+            console.log('Disconnected from the UI WebSocket server');
+        };
+
+        ws.onerror = error => {
+            console.error('WebSocket error:', error);
+        };
+    </script>
+</body>
+</html>

@@ -1,0 +1,56 @@
+{
+    "pattern_id": "SAMPLE_TREND_REVERSAL",
+    "regime_config": {
+        "BULLISH": {
+            "allow_entry": false,
+            "quantity_mod": 1.0,
+            "tp_mult": 1.0,
+            "buffer_atr": 0.5
+        },
+        "SIDEWAYS": {
+            "allow_entry": true,
+            "quantity_mod": 0.5,
+            "tp_mult": 1.0,
+            "buffer_atr": 0.5
+        },
+        "BEARISH": {
+            "allow_entry": true,
+            "quantity_mod": 1.0,
+            "tp_mult": 1.5,
+            "buffer_atr": 0.5
+        },
+        "COMPLETE_BEARISH": {
+            "allow_entry": true,
+            "quantity_mod": 1.2,
+            "tp_mult": 2.0,
+            "buffer_atr": 0.5
+        }
+    },
+    "phases": [
+        {
+            "id": "OVEREXTENDED",
+            "conditions": [
+                "close > moving_avg(history, 20, 'close') + (2 * candle.getATR())",
+                "volume > 50000",
+                "reversal_high = highest(history, 5, 'high')"
+            ],
+            "capture": {}
+        },
+        {
+            "id": "BREAKDOWN",
+            "conditions": [
+                "close < prev_candle.getLow()",
+                "sentiment.pcr_velocity < 0"
+            ],
+            "capture": {},
+            "timeout": 15
+        }
+    ],
+    "execution": {
+        "side": "SHORT",
+        "entry": "prev_candle.getLow() - 2.0",
+        "sl": "vars.reversal_high + 1.0",
+        "tp": "entry - (risk * regime.tp)",
+        "option_selection": "ATM_PUT"
+    }
+}

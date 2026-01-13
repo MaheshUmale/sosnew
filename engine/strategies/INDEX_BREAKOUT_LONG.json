@@ -1,0 +1,51 @@
+{
+    "pattern_id": "INDEX_BREAKOUT_LONG",
+    "regime_config": {
+        "SIDEWAYS": {
+            "allow_entry": true,
+            "quantity_mod": 1.0,
+            "tp_mult": 2.0,
+            "buffer_atr": 0.5
+        },
+        "BULLISH": {
+            "allow_entry": true,
+            "quantity_mod": 1.5,
+            "tp_mult": 2.5,
+            "buffer_atr": 0.5
+        },
+        "BEARISH": {
+            "allow_entry": false,
+            "quantity_mod": 1.0,
+            "tp_mult": 1.0,
+            "buffer_atr": 0.5
+        }
+    },
+    "phases": [
+        {
+            "id": "SETUP",
+            "conditions": [
+                "candle.getClose() > moving_avg(history, 20, 'close')",
+                "candle.getVolume() > moving_avg(history, 20, 'volume')",
+                "ema20 = moving_avg(history, 20, 'close')",
+                "vol_avg = moving_avg(history, 20, 'volume')"
+            ],
+            "capture": {}
+        },
+        {
+            "id": "TRIGGER",
+            "conditions": [
+                "candle.getClose() > vars.ema20",
+                "candle.getVolume() > vars.vol_avg * 1.2",
+                "candle.getClose() > candle.getOpen()"
+            ],
+            "capture": {}
+        }
+    ],
+    "execution": {
+        "side": "LONG",
+        "entry": "candle.getClose()",
+        "sl": "candle.getLow() - (candle.getClose() - candle.getLow()) * 0.5",
+        "tp": "entry + ((entry - sl) * tp_mult)",
+        "option_selection": "ATM_CALL"
+    }
+}
