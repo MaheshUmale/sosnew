@@ -102,13 +102,13 @@ class SOSDataBridgeServer:
             dt = datetime.fromtimestamp(timestamp_ms / 1000)
             date_str = dt.strftime("%Y-%m-%d")
             time_str = dt.strftime("%H:%M")
-            
+
             conn = sqlite3.connect(self.db_path)
             cursor = conn.cursor()
-            cursor.execute("""INSERT OR REPLACE INTO backtest_candles 
+            cursor.execute("""INSERT OR REPLACE INTO backtest_candles
                               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                            (symbol, date_str, time_str,
-                            candle_data['open'], candle_data['high'], 
+                            candle_data['open'], candle_data['high'],
                             candle_data['low'], candle_data['close'],
                             candle_data['volume'], 'live_bridge'))
             conn.commit()
@@ -158,12 +158,12 @@ class SOSDataBridgeServer:
                 data = await asyncio.to_thread(self._fetch_candles_upstox)
                 if data: return data
             except Exception as e: print(f"[WARN] Upstox fetch failed: {e}")
-        
+
         try:
             data = await asyncio.to_thread(self._fetch_candles_tv)
             if data: return data
         except Exception as e: print(f"[WARN] TradingView fetch failed: {e}")
-        
+
         return []
 
     async def publish_sentiment_update(self):
@@ -171,7 +171,7 @@ class SOSDataBridgeServer:
         while True:
             # Run the synchronous update in a separate thread
             await asyncio.to_thread(self.update_pcr_and_breadth_sync)
-            
+
             pcr = self.pcr_data.get("NIFTY", 1.0)
             adv = self.market_breadth.get("advances", 0)
             dec = self.market_breadth.get("declines", 1)
@@ -179,8 +179,8 @@ class SOSDataBridgeServer:
             ratio = adv / dec if dec > 0 else adv
 
             message = {
-                "type": "SENTIMENT_UPDATE", 
-                "timestamp": int(time.time() * 1000), 
+                "type": "SENTIMENT_UPDATE",
+                "timestamp": int(time.time() * 1000),
                 "data": {
                     "regime": regime,
                     "pcr": pcr,
@@ -229,7 +229,7 @@ class SOSDataBridgeServer:
                     candle_data = candle_info["1m"]
                     sym = candle_info["symbol"]
                     ts = candle_info["timestamp"]
-                    
+
                     # Persist to DB
                     self._persist_candle(sym, ts, candle_data)
 
@@ -283,7 +283,7 @@ class SOSDataBridgeServer:
                     candle_data = candle_info["1m"]
                     sym = candle_info["symbol"]
                     ts = candle_info["timestamp"]
-                    
+
                     # Persist to DB
                     self._persist_candle(sym, ts, candle_data)
 
@@ -308,7 +308,7 @@ class SOSDataBridgeServer:
                     await self.send_to_all(message)
                 if self.connected_clients:
                     print(f"[MARKET] Broadcast and persisted {len(all_candles_data)} symbols.")
-            
+
             await asyncio.sleep(15)
 
     def _fetch_candles_upstox(self):
@@ -382,8 +382,8 @@ class SOSDataBridgeServer:
         # Start data producers as background tasks
         asyncio.create_task(self.publish_candles())
         asyncio.create_task(self.publish_sentiment_update())
-        asyncio.create_task(self.publish_option_chain())
-        asyncio.create_task(self.publish_market_updates())
+        # asyncio.create_task(self.publish_option_chain())
+        # asyncio.create_task(self.publish_market_updates())
 
         # Start the WebSocket server
         server = await websockets.serve(self.connection_handler, "0.0.0.0", self.port)
