@@ -1,0 +1,31 @@
+[PATTERN]
+ID: SAMPLE_TREND_REVERSAL
+SIDE: SHORT
+
+[REGIME]
+BULLISH: allow=false
+SIDEWAYS: quantity=0.5, tp=1.0
+BEARISH: quantity=1.0, tp=1.5
+COMPLETE_BEARISH: quantity=1.2, tp=2.0
+
+[PHASES]
+# Phase 1: Overextended Move
+NAME: OVEREXTENDED
+CONDITIONS:
+  close > moving_avg(history, 20, 'close') + (2 * candle.getATR())
+  volume > 50000
+CAPTURE:
+  reversal_high = highest(history, 5, 'high')
+
+# Phase 2: Breakdown
+NAME: BREAKDOWN
+CONDITIONS:
+  close < prev_candle.getLow()
+  sentiment.pcr_velocity < 0
+TIMEOUT: 15
+
+[EXECUTION]
+ENTRY: prev_candle.getLow() - 2.0
+SL: vars.reversal_high + 1.0
+TP: entry - (risk * regime.tp)
+OPTION: ATM_PUT

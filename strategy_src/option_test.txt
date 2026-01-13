@@ -1,0 +1,17 @@
+[PATTERN]
+ID: OPTION_BUY_TEST
+
+[REGIME]
+SIDEWAYS: allow=true, quantity=1.0, tp=1.0
+
+[PHASES]
+NAME: TRIGGER
+CONDITIONS:
+candle.getClose() > 100
+
+[EXECUTION]
+SIDE: LONG
+ENTRY: candle.getClose()
+SL: candle.getLow() - 10.0
+TP: entry + 50.0
+OPTION: ATM_CALL

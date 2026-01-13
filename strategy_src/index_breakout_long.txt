@@ -1,0 +1,29 @@
+[PATTERN]
+ID: INDEX_BREAKOUT_LONG
+
+[REGIME]
+SIDEWAYS: allow=true, quantity=1.0, tp=2.0
+BULLISH: allow=true, quantity=1.5, tp=2.5
+BEARISH: allow=false
+
+[PHASES]
+NAME: SETUP
+CONDITIONS:
+candle.getClose() > moving_avg(history, 20, 'close')
+candle.getVolume() > moving_avg(history, 20, 'volume')
+CAPTURE:
+ema20 = moving_avg(history, 20, 'close')
+vol_avg = moving_avg(history, 20, 'volume')
+
+NAME: TRIGGER
+CONDITIONS:
+candle.getClose() > vars.ema20
+candle.getVolume() > vars.vol_avg * 1.2
+candle.getClose() > candle.getOpen()
+
+[EXECUTION]
+SIDE: LONG
+ENTRY: candle.getClose()
+SL: candle.getLow() - (candle.getClose() - candle.getLow()) * 0.5
+TP: entry + ((entry - sl) * tp_mult)
+OPTION: ATM_CALL
