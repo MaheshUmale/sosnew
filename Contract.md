@@ -55,12 +55,7 @@ This message provides a high-level overview of the current market sentiment, enc
 
 | Field    | Type   | Description                                     |
 |----------|--------|-------------------------------------------------|
-| Field       | Type   | Description                                     |
-|-------------|--------|-------------------------------------------------|
-| `regime`    | String | A string representing the current market state. |
-| `pcr`       | Double | Put-Call Ratio of the primary index.            |
-| `advances`  | Integer| Number of advancing stocks in the market.       |
-| `declines`  | Integer| Number of declining stocks in the market.       |
+| `regime` | String | A string representing the current market state. |
 
 #### `regime` Enum Values
 
@@ -74,6 +69,49 @@ The `regime` field must be one of the following case-insensitive strings:
 - `BEARISH`
 - `COMPLETE_BEARISH`
 - `UNKNOWN`
+
+### 3.3 `OPTION_CHAIN_UPDATE`
+
+This message provides a snapshot of the option chain for a specific symbol, focusing on Open Interest (OI) data.
+
+- **`type`**: `"OPTION_CHAIN_UPDATE"`
+
+#### `data` Object Structure
+
+| Field    | Type  | Description                                                     |
+|----------|-------|-----------------------------------------------------------------|
+| `symbol` | String| The identifier for the financial instrument (e.g., "NIFTY_BANK"). |
+| `chain`  | Array | An array of objects, where each object represents a strike price. |
+
+#### `chain` Array Object Structure
+
+| Field        | Type   | Description                                 |
+|--------------|--------|---------------------------------------------|
+| `strike`     | Double | The strike price.                           |
+| `call_oi_chg`| Long   | The change in open interest for call options. |
+| `put_oi_chg` | Long   | The change in open interest for put options.  |
+
+### 3.4 `MARKET_UPDATE`
+
+This is a composite message that combines candle data and sentiment data into a single update. This is the primary message type used during active market hours.
+
+- **`type`**: `"MARKET_UPDATE"`
+
+#### `data` Object Structure
+
+| Field       | Type   | Description                                      |
+|-------------|--------|--------------------------------------------------|
+| `symbol`    | String | The identifier for the financial instrument.     |
+| `candle`    | Object | A nested JSON object containing the OHLCV data.  |
+| `sentiment` | Object | A nested JSON object containing sentiment metrics. |
+
+#### `sentiment` Object Structure
+
+| Field    | Type   | Description                                     |
+|----------|--------|-------------------------------------------------|
+| `pcr`    | Double | The Put-Call Ratio.                             |
+| `regime` | String | The calculated market regime (see `SENTIMENT_UPDATE`). |
+
 
 ## 4. Examples
 
@@ -96,7 +134,47 @@ The `regime` field must be one of the following case-insensitive strings:
 }
 ```
 
-### 4.2 `SENTIMENT_UPDATE` Example
+### 4.2 `OPTION_CHAIN_UPDATE` Example
+
+```json
+{
+  "type": "OPTION_CHAIN_UPDATE",
+  "timestamp": 1704711720000,
+  "data": {
+    "symbol": "NIFTY_BANK",
+    "chain": [
+      { "strike": 48000, "call_oi_chg": -15000, "put_oi_chg": 25000 },
+      { "strike": 48100, "call_oi_chg": -10000, "put_oi_chg": 18000 },
+      { "strike": 48200, "call_oi_chg": 22000, "put_oi_chg": 5000 }
+    ]
+  }
+}
+```
+
+### 4.3 `MARKET_UPDATE` Example
+
+```json
+{
+  "type": "MARKET_UPDATE",
+  "timestamp": 1704711780000,
+  "data": {
+    "symbol": "NIFTY_BANK",
+    "candle": {
+      "open": 48150.75,
+      "high": 48200.00,
+      "low": 48120.50,
+      "close": 48180.25,
+      "volume": 95000
+    },
+    "sentiment": {
+      "pcr": 1.05,
+      "regime": "SIDEWAYS_BULLISH"
+    }
+  }
+}
+```
+
+### 4.4 `SENTIMENT_UPDATE` Example
 
 ```json
 {

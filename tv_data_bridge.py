@@ -382,8 +382,8 @@ class SOSDataBridgeServer:
         # Start data producers as background tasks
         asyncio.create_task(self.publish_candles())
         asyncio.create_task(self.publish_sentiment_update())
-        # asyncio.create_task(self.publish_option_chain())
-        # asyncio.create_task(self.publish_market_updates())
+        asyncio.create_task(self.publish_option_chain())
+        asyncio.create_task(self.publish_market_updates())
 
         # Start the WebSocket server
         server = await websockets.serve(self.connection_handler, "0.0.0.0", self.port)
