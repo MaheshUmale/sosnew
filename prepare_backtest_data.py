@@ -32,25 +32,30 @@ class BacktestDataPreparer:
     def run(self, symbols):
         print(f"Preparing backtest data for {self.date_str}...")
         for symbol in symbols:
-            print(f"Fetching candle data for {symbol}...")
+            print(f"Fetching data for {symbol}...")
             candles = self.data_manager.get_historical_candles(symbol, n_bars=1000)
             if candles is not None:
+                print(f"DataFrame for {symbol}:\n{candles}")
                 candles = candles.reset_index()
-                candles_for_date = candles[candles['datetime'].dt.date == self.date_obj.date()]
-                self._store_candles(symbol, candles_for_date)
+                if 'datetime' in candles.columns:
+                    candles_for_date = candles[candles['datetime'].dt.date == self.date_obj.date()]
+                    self._store_candles(symbol, candles_for_date)
+                elif 'timestamp' in candles.columns:
+                    candles['timestamp'] = pd.to_datetime(candles['timestamp'])
+                    candles_for_date = candles[candles['timestamp'].dt.date == self.date_obj.date()]
+                    self._store_candles(symbol, candles_for_date)
+                else:
+                    print(f"No 'datetime' or 'timestamp' column found for {symbol}")
 
-                if "NIFTY" in symbol.upper():
-                    print(f"Fetching option chain and sentiment data for {symbol}...")
-                    for _, candle in candles_for_date.iterrows():
-                        timestamp = candle['datetime']
-                        option_chain = self.data_manager.get_option_chain(symbol)
-                        if option_chain:
-                            self._store_option_chain(symbol, option_chain, timestamp)
+            if "NIFTY" in symbol.upper():
+                option_chain = self.data_manager.get_option_chain(symbol)
+                if option_chain:
+                    self._store_option_chain(symbol, option_chain)
 
-                        pcr = self.data_manager.get_pcr(symbol)
-                        market_breadth = self.data_manager.get_market_breadth()
-                        regime = self._calculate_sentiment_regime(pcr, market_breadth)
-                        self._store_sentiment(symbol, pcr, regime, timestamp)
+                pcr = self.data_manager.get_pcr(symbol)
+                market_breadth = self.data_manager.get_market_breadth()
+                regime = self._calculate_sentiment_regime(pcr, market_breadth)
+                self._store_sentiment(symbol, pcr, regime)
 
         print("Backtest data preparation complete.")
 
@@ -68,11 +73,12 @@ class BacktestDataPreparer:
             if pcr > 1.0 and ratio < 1.0: return "SIDEWAYS_BEARISH"
         return "SIDEWAYS"
 
-    def _store_sentiment(self, symbol, pcr, regime, timestamp):
+    def _store_sentiment(self, symbol, pcr, regime):
         conn = sqlite3.connect(self.db_path)
+        timestamp = datetime.now().strftime('%H:%M')
         try:
             conn.execute("INSERT OR REPLACE INTO backtest_sentiment VALUES (?, ?, ?, ?, ?)",
-                         (symbol, self.date_str, timestamp.strftime('%H:%M'), pcr, regime))
+                         (symbol, self.date_str, timestamp, pcr, regime))
         except Exception as e:
             print(f"Error storing sentiment for {symbol}: {e}")
         conn.commit()
@@ -91,12 +97,13 @@ class BacktestDataPreparer:
         conn.commit()
         conn.close()
 
-    def _store_option_chain(self, symbol, option_chain, timestamp):
+    def _store_option_chain(self, symbol, option_chain):
         conn = sqlite3.connect(self.db_path)
+        timestamp = datetime.now().strftime('%H:%M')
         for item in option_chain:
             try:
                 conn.execute("INSERT OR REPLACE INTO backtest_option_chain VALUES (?, ?, ?, ?, ?, ?)",
-                             (symbol, self.date_str, timestamp.strftime('%H:%M'), item['strike'],
+                             (symbol, self.date_str, timestamp, item['strike'],
                               item['call_oi_chg'], item['put_oi_chg']))
             except Exception as e:
                 print(f"Error storing option chain for {symbol}: {e}")

@@ -5,7 +5,7 @@ from python_engine.core.sentiment_handler import SentimentHandler
 from python_engine.core.pattern_matcher_handler import PatternMatcherHandler
 from python_engine.core.execution_handler import ExecutionHandler
 from python_engine.models.data_models import MarketEvent, MessageType, VolumeBar, Sentiment, OptionChainData
-from config import Config
+from engine_config import Config
 from python_engine.core.order_orchestrator import OrderOrchestrator
 from data_sourcing.data_manager import DataManager
 import upstox_client
