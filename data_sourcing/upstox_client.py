@@ -1,0 +1,50 @@
+import upstox_client
+try:
+    import config
+    UPSTOX_AVAILABLE = True
+except ImportError:
+    UPSTOX_AVAILABLE = False
+    print("[UpstoxClient] config.py not found, Upstox functionality will be disabled.")
+
+class UpstoxClient:
+    def __init__(self):
+        self.api_client = None
+        if UPSTOX_AVAILABLE and hasattr(config, 'ACCESS_TOKEN'):
+            self.configuration = upstox_client.Configuration()
+            self.configuration.access_token = config.ACCESS_TOKEN
+            self.api_client = upstox_client.ApiClient(self.configuration)
+        else:
+            print("[UpstoxClient] Not initialized due to missing config or library.")
+
+    def get_historical_candle_data(self, instrument_key, interval, to_date, from_date):
+        if not self.api_client: return None
+        history_api = upstox_client.HistoryV3Api(self.api_client)
+        interval_unit_map = {
+            '1m': ('minute', '1'),
+            '1minute': ('minute', '1'),
+            '30m': ('minute', '30'),
+            '30minute': ('minute', '30'),
+            '1d': ('day', '1'),
+            '1day': ('day', '1'),
+        }
+        interval_unit, interval_val = interval_unit_map.get(interval, ('minute', '1'))
+        return history_api.get_historical_candle_data1(
+            instrument_key=instrument_key,
+            interval_unit=interval_unit,
+            interval=interval_val,
+            to_date=to_date,
+            from_date=from_date
+        )
+
+    def get_market_data_feed_authorize(self):
+        if not self.api_client: return None
+        websocket_api = upstox_client.WebsocketApi(self.api_client)
+        return websocket_api.get_market_data_feed_authorize(api_version='2.0')
+
+    def get_put_call_option_chain(self, instrument_key, expiry_date):
+        if not self.api_client: return None
+        options_api = upstox_client.OptionsApi(self.api_client)
+        return options_api.get_put_call_option_chain(
+            instrument_key=instrument_key,
+            expiry_date=expiry_date
+        )
