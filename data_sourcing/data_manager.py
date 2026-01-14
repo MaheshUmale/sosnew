@@ -13,8 +13,8 @@ class DataManager:
         self.nse_client = NSEClient()
         SymbolMaster.initialize()
 
-    def get_spot_price(self, symbol):
-        candles = self.get_historical_candles(symbol, n_bars=1)
+    def get_spot_price(self, symbol, to_date=None):
+        candles = self.get_historical_candles(symbol, n_bars=1, to_date=to_date)
         if candles is not None and not candles.empty:
             return candles.iloc[-1]['close']
         return None
@@ -31,7 +31,7 @@ class DataManager:
         strike_step = 100 if "BANKNIFTY" in symbol.upper() else 50
         return [atm_strike + i * strike_step for i in range(-5, 6)]
 
-    def get_historical_candles(self, symbol, exchange='NSE', interval='1m', n_bars=100):
+    def get_historical_candles(self, symbol, exchange='NSE', interval='1m', n_bars=100, to_date=None):
         # Prioritize tvDatafeed for index data with volume
         if "NIFTY" in symbol.upper():
             from data_sourcing.tvdatafeed.main import Interval
@@ -45,9 +45,11 @@ class DataManager:
             instrument_key = SymbolMaster.get_upstox_key(symbol)
             if instrument_key:
                 from datetime import datetime, timedelta
-                to_date = datetime.now().strftime('%Y-%m-%d')
-                from_date = (datetime.now() - timedelta(days=5)).strftime('%Y-%m-%d')
-                response = self.upstox_client.get_historical_candle_data(instrument_key, interval, to_date, from_date)
+                if to_date is None:
+                    to_date = datetime.now()
+                from_date = (to_date - timedelta(days=5)).strftime('%Y-%m-%d')
+                to_date_str = to_date.strftime('%Y-%m-%d')
+                response = self.upstox_client.get_historical_candle_data(instrument_key, interval, to_date_str, from_date)
                 if response and hasattr(response, 'data') and hasattr(response.data, 'candles'):
                     df = pd.DataFrame(response.data.candles, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume', 'oi'])
                     df['timestamp'] = pd.to_datetime(df['timestamp'])
