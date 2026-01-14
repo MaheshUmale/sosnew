@@ -44,7 +44,12 @@ class LiveTradingEngine:
             print(f"Exception when getting WebSocket authorization: {e}")
             return None
 
-    async def run(self):
+    async def start(self):
+        if not self.configuration.access_token:
+            print("[ERROR] Upstox access token not found. Please add it to config.json.")
+            print("         'upstox_access_token': 'YOUR_TOKEN'")
+            return
+
         response = await self.get_market_data_feed_authorize()
 
         if not response or not response.data:
@@ -90,10 +95,7 @@ class LiveTradingEngine:
                             self.execution_handler.on_event(event)
 
 
-def main():
+async def run_live():
     Config.load('config.json')
     engine = LiveTradingEngine()
-    asyncio.run(engine.run())
-
-if __name__ == "__main__":
-    main()
+    await engine.start()

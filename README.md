@@ -1,68 +1,64 @@
-# SOS-System-DATA-Bridge
+# Scalping Orchestration System (SOS) - Python Engine
 
-This repository contains the Python-based Data Bridge for the Scalping Orchestration System (SOS). It acts as a WebSocket server, collecting market data from various sources and broadcasting it to the Java Core Engine.
+This repository contains a Python-based trading engine for backtesting and live trading financial strategies.
 
-## Backtesting Workflow
+## High-Level Architecture
 
-The primary workflow for this repository is to prepare historical data and feed it to the Java engine for backtesting.
+The engine is built with a modular, event-driven architecture. The core components are:
+- **`run.py`**: The main entry point for running the engine in both backtest and live modes.
+- **`python_engine`**: The main package containing the core trading logic.
+  - **`main.py`**: Handles the backtesting loop.
+  - **`live_main.py`**: Handles the live trading loop.
+  - **`core`**: Contains the main processing handlers (`PatternMatcherHandler`, `ExecutionHandler`, etc.).
+  - **`models`**: Contains the Python `dataclass` definitions for all data structures.
+  - **`utils`**: Contains helper utilities like the `DotDict` and `atr_calculator`.
+- **`data_sourcing`**: Contains the `DataManager` responsible for fetching all market data.
+- **`strategies`**: Contains the JSON files that define the trading strategies.
 
-### Step 1: Prepare Backtest Data
+## Installation
 
-First, you need to download all the necessary historical data for a specific date and store it in a local SQLite database.
-
-1.  **Install dependencies:**
+1.  **Clone the Repository:**
     ```bash
+    git clone <repository-url>
+    cd Scalping-Orchestration-System-SOS-
+    ```
+
+2.  **Install Dependencies:**
+    It is highly recommended to use a virtual environment.
+    ```bash
+    python -m venv venv
+    source venv/bin/activate  # On Windows, use `venv\Scripts\activate`
     pip install -r requirements.txt
     ```
-2.  **Configure the Upstox API key:**
-    Create a `config.py` file with your Upstox access token:
-    ```python
-    ACCESS_TOKEN = "YOUR_ACCESS_TOKEN"
+
+## How to Run
+
+### Backtesting
+
+To run a backtest, use the `run.py` script with `backtest` mode and specify a symbol.
+
+```bash
+python run.py --mode backtest --symbol NIFTY
+```
+
+This will fetch the latest historical data for the symbol, run it through the engine, and print any trade executions to the console.
+
+### Live Trading
+
+To run the engine in live mode, you first need a valid Upstox developer access token.
+
+1.  **Configure Access Token:**
+    Open the `config.json` file and add your Upstox access token:
+    ```json
+    {
+        "strategies_dir": "strategies",
+        "upstox_access_token": "YOUR_SECRET_ACCESS_TOKEN_HERE"
+    }
     ```
-3.  **Run the data preparation script:**
-    Execute the `prepare_backtest_data.py` script with the target date as an argument.
+
+2.  **Run in Live Mode:**
+    Execute the `run.py` script with `live` mode:
     ```bash
-    python prepare_backtest_data.py YYYY-MM-DD
+    python run.py --mode live
     ```
-    For example, to get data for January 13th, 2026:
-    ```bash
-    python prepare_backtest_data.py 2026-01-13
-    ```
-    This will create a `backtest_data.db` file containing all the candle, option chain, and sentiment data for that day.
-
-### Step 2: Run the Backtest
-
-Once the data is prepared, you can run the backtest.
-
-1.  **Start the Python Data Bridge Server:**
-    Run the `tv_data_bridge.py` script. This will start a WebSocket server that reads the data from `backtest_data.db` and replays it.
-    ```bash
-    python tv_data_bridge.py
-    ```
-2.  **Start the Java Core Engine:**
-    In a separate terminal, start the Java engine. It will connect to the Python server, receive the historical data, and run the trading strategies.
-    ```bash
-    # Make sure you have built the Java engine first
-    java -jar engine/target/sos-engine-1.0-SNAPSHOT.jar
-    ```
-
-## Live Trading
-
-For live trading, the process is different. The `live_trading_bridge.py` script connects to the Upstox WebSocket for real-time data and forwards it to the Java engine.
-
-1.  **Install dependencies and configure the API key** as described in the backtesting section.
-2.  **Run the live trading bridge:**
-    ```bash
-    python live_trading_bridge.py
-    ```
-    This script will:
-    *   Start the Java Core Engine automatically in the background.
-    *   Connect to the Upstox live data feed.
-    *   Transform the data to the format expected by the SOS Engine.
-    *   Forward the live data to the Java engine.
-
-**Note:** The `tv_data_bridge.py` script is for replaying backtest data, while the `live_trading_bridge.py` script is for live market data. Do not run both at the same time.
-
-## Vendored Dependency
-
-The `tvdatafeed` library has been vendored into the `data_sourcing/tvdatafeed` directory. This was done to bypass persistent installation issues that were encountered in the development environment. This is a form of technical debt, and it should be revisited in the future to see if a more standard installation method is available.
+    The engine will connect to the Upstox WebSocket feed and process live market data.

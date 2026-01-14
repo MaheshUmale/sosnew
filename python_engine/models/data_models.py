@@ -26,10 +26,10 @@ class Sentiment:
 @dataclass
 class OptionChainData:
     strike: int
-    call_oi: int
-    put_oi: int
     call_oi_chg: int
     put_oi_chg: int
+    call_oi: int = 0
+    put_oi: int = 0
 
 @dataclass
 class RegimeConfig:
