@@ -123,3 +123,4 @@ engine/dependency-reduced-pom.xml
 
 # Config
 config.py
+config.json
