@@ -1,0 +1,28 @@
+{
+    "pattern_id": "MV_CROSS_SIMPLE",
+    "regime_config": {
+        "BULLISH": {
+            "allow_entry": true,
+            "tp_mult": 1.5,
+            "quantity_mod": 1.0,
+            "buffer_atr": 0.5
+        }
+    },
+    "phases": [
+        {
+            "id": "SETUP",
+            "conditions": [
+                "moving_avg(history, 5, 'close') > moving_avg(history, 20, 'close')"
+            ],
+            "capture": {},
+            "timeout": 0
+        }
+    ],
+    "execution": {
+        "side": "BUY",
+        "entry": "candle.close",
+        "sl": "candle.low - (candle.atr * 1.5)",
+        "tp": "candle.close + (candle.atr * 3)",
+        "option_selection": "ATM"
+    }
+}
