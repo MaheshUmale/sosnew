@@ -1,0 +1,39 @@
+{
+    "pattern_id": "INDEX_OPTION_DEMO",
+    "regime_config": {
+        "SIDEWAYS": {
+            "allow_entry": true,
+            "quantity_mod": 1.0,
+            "tp_mult": 1.0,
+            "buffer_atr": 0.5
+        },
+        "BULLISH": {
+            "allow_entry": true,
+            "quantity_mod": 1.0,
+            "tp_mult": 1.0,
+            "buffer_atr": 0.5
+        },
+        "BEARISH": {
+            "allow_entry": true,
+            "quantity_mod": 1.0,
+            "tp_mult": 1.0,
+            "buffer_atr": 0.5
+        }
+    },
+    "phases": [
+        {
+            "id": "TRIGGER",
+            "conditions": [
+                "close > 0"
+            ],
+            "capture": {}
+        }
+    ],
+    "execution": {
+        "side": "LONG",
+        "entry": "candle.getClose()",
+        "sl": "candle.getLow() - 50.0",
+        "tp": "entry + 100.0",
+        "option_selection": "ATM_CALL"
+    }
+}

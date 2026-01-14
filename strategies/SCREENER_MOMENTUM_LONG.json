@@ -1,0 +1,49 @@
+{
+    "pattern_id": "SCREENER_MOMENTUM_LONG",
+    "regime_config": {
+        "SIDEWAYS": {
+            "allow_entry": true,
+            "quantity_mod": 1.0,
+            "tp_mult": 1.0,
+            "buffer_atr": 0.5
+        },
+        "BULLISH": {
+            "allow_entry": true,
+            "quantity_mod": 1.0,
+            "tp_mult": 1.0,
+            "buffer_atr": 0.5
+        }
+    },
+    "phases": [
+        {
+            "id": "SCREENER_SYNC",
+            "conditions": [
+                "vars.screener.rvol > 1.2",
+                "vars.screener.change_from_open > 0.3"
+            ]
+        },
+        {
+            "id": "CONSOLIDATION_VALIDATION",
+            "conditions": [
+                "stdev(history, 5, 'close') < (candle.getATR() * 1.0)"
+            ],
+            "capture": {
+                "range_max": "highest(history, 5, 'high')"
+            }
+        },
+        {
+            "id": "TRIGGER",
+            "conditions": [
+                "candle.getClose() > vars.range_max",
+                "candle.getVolume() > prev_candle.getVolume()"
+            ]
+        }
+    ],
+    "execution": {
+        "side": "LONG",
+        "entry": "candle.getClose()",
+        "sl": "candle.getLow()",
+        "tp": "entry + ( (entry - sl) * 2.0 )",
+        "option_selection": "OTM_CALL_1"
+    }
+}

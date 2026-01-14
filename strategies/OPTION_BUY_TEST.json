@@ -1,0 +1,27 @@
+{
+    "pattern_id": "OPTION_BUY_TEST",
+    "regime_config": {
+        "SIDEWAYS": {
+            "allow_entry": true,
+            "quantity_mod": 1.0,
+            "tp_mult": 1.0,
+            "buffer_atr": 0.5
+        }
+    },
+    "phases": [
+        {
+            "id": "TRIGGER",
+            "conditions": [
+                "candle.getClose() > 100"
+            ],
+            "capture": {}
+        }
+    ],
+    "execution": {
+        "side": "LONG",
+        "entry": "candle.getClose()",
+        "sl": "candle.getLow() - 10.0",
+        "tp": "entry + 50.0",
+        "option_selection": "ATM_CALL"
+    }
+}

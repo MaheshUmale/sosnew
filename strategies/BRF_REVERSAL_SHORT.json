@@ -1,0 +1,52 @@
+{
+  "pattern_id": "BRF_SHORT",
+  "regime_config": {
+    "COMPLETE_BULLISH": {
+      "allow_entry": false
+    },
+    "SIDEWAYS": {
+      "tp_mult": 1.0,
+      "quantity_mod": 0.5
+    },
+    "BEARISH": {
+      "tp_mult": 2.5,
+      "quantity_mod": 1.0
+    },
+    "COMPLETE_BEARISH": {
+      "tp_mult": 3.0,
+      "quantity_mod": 1.2
+    }
+  },
+  "phases": [
+    {
+      "id": "SETUP",
+      "conditions": [
+        "candle.getVolume() > 10000"
+      ],
+      "capture": {
+        "mother_h": "candle.getHigh()",
+        "mother_l": "candle.getLow()"
+      }
+    },
+    {
+      "id": "VALIDATION",
+      "conditions": [
+        "candle.getClose() < var.mother_l"
+      ],
+      "timeout": 5
+    },
+    {
+      "id": "TRIGGER",
+      "conditions": [
+        "candle.getHigh() < vars.mother_h",
+        "candle.getClose() > vars.mother_l"
+      ]
+    }
+  ],
+  "execution": {
+    "side": "SHORT",
+    "entry": "vars.mother_l - 0.1",
+    "sl": "vars.mother_h",
+    "tp": "entry - (risk * tp_mult)"
+  }
+}

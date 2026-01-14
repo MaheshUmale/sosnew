@@ -1,0 +1,64 @@
+{
+    "pattern_id": "ROUND_LEVEL_REJECTION_SHORT",
+    "regime_config": {
+        "SIDEWAYS": {
+            "allow_entry": true,
+            "quantity_mod": 0.5,
+            "tp_mult": 1.0,
+            "buffer_atr": 0.3
+        },
+        "BEARISH": {
+            "allow_entry": true,
+            "quantity_mod": 1.0,
+            "tp_mult": 1.0,
+            "buffer_atr": 0.5
+        },
+        "COMPLETE_BEARISH": {
+            "allow_entry": true,
+            "quantity_mod": 1.2,
+            "tp_mult": 1.0,
+            "buffer_atr": 0.7
+        },
+        "COMPLETE_BULLISH": {
+            "allow_entry": false,
+            "quantity_mod": 1.0,
+            "tp_mult": 1.0,
+            "buffer_atr": 0.5
+        }
+    },
+    "phases": [
+        {
+            "id": "PROXIMITY_SETUP",
+            "conditions": [
+                "abs(candle.getClose() - round(candle.getClose(), -2)) < 50",
+                "sentiment.pcr_velocity <= 0"
+            ],
+            "capture": {
+                "round_level": "round(candle.getClose(), -2)",
+                "upper_bound": "vars.round_level + (candle.getATR() * regime.buffer_atr)"
+            }
+        },
+        {
+            "id": "REJECTION_VALIDATION",
+            "conditions": [
+                "candle.getHigh() <= vars.upper_bound",
+                "candle.getClose() < candle.getOpen()",
+                "sentiment.ce_oi_change >= sentiment.pe_oi_change"
+            ],
+            "timeout": 5
+        },
+        {
+            "id": "TRIGGER",
+            "conditions": [
+                "candle.getClose() < prev_candle.getLow()"
+            ]
+        }
+    ],
+    "execution": {
+        "side": "SHORT",
+        "entry": "prev_candle.getLow() - 0.5",
+        "sl": "vars.upper_bound",
+        "tp": "entry - ( (sl - entry) * 2.5 )",
+        "option_selection": "ATM_PUT"
+    }
+}

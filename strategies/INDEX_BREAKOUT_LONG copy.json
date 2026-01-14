@@ -1,0 +1,37 @@
+{
+  "name": "INDEX_BREAKOUT_LONG",
+  "symbol": "NIFTY_F1",
+  "timeframe": "1m",
+  "entryConditions": {
+    "phases": [
+      {
+        "name": "Breakout",
+        "expression": "bar.close > price.high(10)",
+        "nextPhase": "Confirmation"
+      },
+      {
+        "name": "Confirmation",
+        "expression": "bar.volume > price.sma(volume, 20)",
+        "nextPhase": "Entry"
+      }
+    ],
+    "initialPhase": "Breakout"
+  },
+  "exitConditions": {
+    "takeProfit": {
+      "type": "percentage",
+      "value": 0.5
+    },
+    "stopLoss": {
+      "type": "percentage",
+      "value": 0.2
+    }
+  },
+  "execution": {
+    "contract": {
+      "type": "ATM",
+      "leg": "CE"
+    },
+    "quantity": 1
+  }
+}
