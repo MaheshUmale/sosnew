@@ -16,11 +16,11 @@ class VolumeBar:
 @dataclass
 class Sentiment:
     pcr: float
-    pcr_velocity: float
     advances: int
     declines: int
-    oi_wall_above: float
-    oi_wall_below: float
+    pcr_velocity: float = 0.0
+    oi_wall_above: float = 0.0
+    oi_wall_below: float = 0.0
     regime: Optional[str] = None
 
 @dataclass
