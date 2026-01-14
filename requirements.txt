@@ -1,5 +1,2 @@
-requests
 websockets
-pandas
-tradingview-screener
-upstox-python-sdk==2.19.0
+asteval

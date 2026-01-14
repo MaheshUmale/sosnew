@@ -1,0 +1,4 @@
+{
+    "websocket_uri": "ws://localhost:8765",
+    "strategies_dir": "strategies"
+}
