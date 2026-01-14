@@ -1,18 +1,23 @@
 import upstox_client
 try:
-    import config
+    from engine_config import Config as UpstoxConfig
     UPSTOX_AVAILABLE = True
 except ImportError:
     UPSTOX_AVAILABLE = False
-    print("[UpstoxClient] config.py not found, Upstox functionality will be disabled.")
+    print("[UpstoxClient] engine_config.py not found, Upstox functionality will be disabled.")
 
 class UpstoxClient:
     def __init__(self):
         self.api_client = None
-        if UPSTOX_AVAILABLE and hasattr(config, 'ACCESS_TOKEN'):
-            self.configuration = upstox_client.Configuration()
-            self.configuration.access_token = config.ACCESS_TOKEN
-            self.api_client = upstox_client.ApiClient(self.configuration)
+        if UPSTOX_AVAILABLE:
+            UpstoxConfig.load('config.json')
+            access_token = UpstoxConfig.get('upstox_access_token')
+            if access_token:
+                self.configuration = upstox_client.Configuration()
+                self.configuration.access_token = access_token
+                self.api_client = upstox_client.ApiClient(self.configuration)
+            else:
+                print("[UpstoxClient] Not initialized due to missing 'upstox_access_token' in config.json.")
         else:
             print("[UpstoxClient] Not initialized due to missing config or library.")
 
