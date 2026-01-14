@@ -7,6 +7,7 @@ from python_engine.core.execution_handler import ExecutionHandler
 from python_engine.models.data_models import MarketEvent, MessageType, VolumeBar, Sentiment, OptionChainData
 from engine_config import Config
 from python_engine.core.order_orchestrator import OrderOrchestrator
+from python_engine.core.trade_logger import TradeLog
 from data_sourcing.data_manager import DataManager
 from python_engine.utils.atr_calculator import calculate_atr
 
@@ -15,7 +16,8 @@ def run_backtest(symbol: str):
     Config.load('config.json')
 
     # Initialize handlers
-    order_orchestrator = OrderOrchestrator()
+    trade_log = TradeLog(f'backtest_{symbol.replace("|", "_")}.csv')
+    order_orchestrator = OrderOrchestrator(trade_log)
     option_chain_handler = OptionChainHandler()
     sentiment_handler = SentimentHandler()
     pattern_matcher_handler = PatternMatcherHandler(Config.get('strategies_dir'))

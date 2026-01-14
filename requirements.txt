@@ -1,1 +1,4 @@
 asteval
+pandas
+tradingview_screener
+git+https://github.com/upstox/upstox-python.git
