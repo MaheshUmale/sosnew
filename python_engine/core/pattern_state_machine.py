@@ -1,4 +1,4 @@
-from python_engine.models.data_models import PatternDefinition, PatternState, VolumeBar, Sentiment
+from python_engine.models.data_models import PatternDefinition, PatternState, VolumeBar, Sentiment, Phase
 from python_engine.utils.mvel_functions import MVEL_FUNCTIONS
 from python_engine.utils.dot_dict import DotDict
 from typing import Dict, Optional, List
@@ -75,7 +75,7 @@ class PatternStateMachine:
         self._asteval.symtable['low'] = candle.low
         self._asteval.symtable['open'] = candle.open
 
-    def _get_current_phase(self) -> Optional[PatternDefinition.Phase]:
+    def _get_current_phase(self) -> Optional[Phase]:
         for phase in self._definition.phases:
             if phase.id == self._state.current_phase_id:
                 return phase
