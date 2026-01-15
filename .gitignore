@@ -124,3 +124,7 @@ engine/dependency-reduced-pom.xml
 # Config
 config.py
 config.json
+
+# Generated files
+backtest_trades.csv
+live_trades.csv

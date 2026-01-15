@@ -25,27 +25,31 @@
             "id": "DEMAND_SETUP",
             "conditions": [
                 "volume > (moving_avg(history, 20, 'volume') * 1.5)",
-                "candle.getLow() == lowest(history, 50, 'low')"
+                "low == lowest(history, 50, 'low')"
             ],
             "capture": {
-                "block_high": "candle.getHigh()",
-                "block_low": "candle.getLow()"
-            }
+                "block_high": "high",
+                "block_low": "low"
+            },
+            "timeout": 0
         },
         {
             "id": "RETEST_VALIDATION",
             "conditions": [
-                "candle.getLow() >= vars.block_low",
-                "candle.getLow() <= (vars.block_low + (vars.block_high - vars.block_low) * 0.3)"
+                "low >= vars.block_low",
+                "low <= (vars.block_low + (vars.block_high - vars.block_low) * 0.3)"
             ],
-            "timeout": 15
+            "timeout": 15,
+            "capture": {}
         },
         {
             "id": "TRIGGER",
             "conditions": [
-                "candle.getClose() > vars.block_high",
+                "close > vars.block_high",
                 "sentiment.breadth_ratio > 1.2"
-            ]
+            ],
+            "capture": {},
+            "timeout": 0
         }
     ],
     "execution": {

@@ -1,4 +1,5 @@
 import upstox_client
+import os
 try:
     from engine_config import Config as UpstoxConfig
     UPSTOX_AVAILABLE = True
@@ -10,8 +11,7 @@ class UpstoxClient:
     def __init__(self):
         self.api_client = None
         if UPSTOX_AVAILABLE:
-            UpstoxConfig.load('config.json')
-            access_token = UpstoxConfig.get('upstox_access_token')
+            access_token = os.environ.get('UPSTOX_ACCESS_TOKEN')
             if access_token:
                 self.configuration = upstox_client.Configuration()
                 self.configuration.access_token = access_token

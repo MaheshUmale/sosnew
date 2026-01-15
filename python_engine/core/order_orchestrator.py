@@ -70,6 +70,7 @@ class OrderOrchestrator:
         # Create and log the trade entry
         trade = Trade(
             trade_id=trade_id,
+            pattern_id=definition.pattern_id,
             symbol=state.symbol,
             side=side,
             entry_time=candle.timestamp,

@@ -30,33 +30,37 @@
         {
             "id": "PROXIMITY_SETUP",
             "conditions": [
-                "abs(candle.getClose() - round(candle.getClose(), -2)) < 50",
+                "abs(close - round(close, -2)) < 50",
                 "sentiment.pcr_velocity <= 0"
             ],
             "capture": {
-                "round_level": "round(candle.getClose(), -2)",
-                "upper_bound": "vars.round_level + (candle.getATR() * regime.buffer_atr)"
-            }
+                "round_level": "round(close, -2)",
+                "upper_bound": "vars.round_level + (atr * 0.5)"
+            },
+            "timeout": 0
         },
         {
             "id": "REJECTION_VALIDATION",
             "conditions": [
-                "candle.getHigh() <= vars.upper_bound",
-                "candle.getClose() < candle.getOpen()",
+                "high <= vars.upper_bound",
+                "close < open",
                 "sentiment.ce_oi_change >= sentiment.pe_oi_change"
             ],
-            "timeout": 5
+            "timeout": 5,
+            "capture": {}
         },
         {
             "id": "TRIGGER",
             "conditions": [
-                "candle.getClose() < prev_candle.getLow()"
-            ]
+                "close < prev_candle.low"
+            ],
+            "capture": {},
+            "timeout": 0
         }
     ],
     "execution": {
-        "side": "SHORT",
-        "entry": "prev_candle.getLow() - 0.5",
+        "side": "SELL",
+        "entry": "prev_candle.low - 0.5",
         "sl": "vars.upper_bound",
         "tp": "entry - ( (sl - entry) * 2.5 )",
         "option_selection": "ATM_PUT"

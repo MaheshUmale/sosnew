@@ -13,7 +13,7 @@ class TradeLog:
             with open(self.log_file, 'w', newline='') as f:
                 writer = csv.writer(f)
                 writer.writerow([
-                    'trade_id', 'symbol', 'side', 'entry_time', 'entry_price',
+                    'trade_id', 'pattern_id', 'symbol', 'side', 'entry_time', 'entry_price',
                     'exit_time', 'exit_price', 'stop_loss', 'take_profit',
                     'outcome', 'pnl'
                 ])
@@ -42,7 +42,7 @@ class TradeLog:
         with open(self.log_file, 'a', newline='') as f:
             writer = csv.writer(f)
             writer.writerow([
-                trade.trade_id, trade.symbol, trade.side, trade.entry_time,
+                trade.trade_id, trade.pattern_id, trade.symbol, trade.side, trade.entry_time,
                 trade.entry_price, trade.exit_time, trade.exit_price,
                 trade.stop_loss, trade.take_profit, trade.outcome, pnl
             ])

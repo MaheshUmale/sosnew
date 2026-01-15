@@ -30,33 +30,37 @@
         {
             "id": "SETUP",
             "conditions": [
-                "candle.getVolume() > 10000"
+                "volume > 10000"
             ],
             "capture": {
-                "mother_h": "candle.getHigh()",
-                "mother_l": "candle.getLow()"
-            }
+                "mother_h": "high",
+                "mother_l": "low"
+            },
+            "timeout": 0
         },
         {
             "id": "VALIDATION",
             "conditions": [
-                "candle.getClose() < vars.mother_l"
+                "close < vars.mother_l"
             ],
-            "timeout": 5
+            "timeout": 5,
+            "capture": {}
         },
         {
             "id": "TRIGGER",
             "conditions": [
-                "candle.getHigh() < vars.mother_h",
-                "candle.getClose() > vars.mother_l"
-            ]
+                "high < vars.mother_h",
+                "close > vars.mother_l"
+            ],
+            "capture": {},
+            "timeout": 0
         }
     ],
     "execution": {
-        "side": "SHORT",
+        "side": "SELL",
         "entry": "vars.mother_l - 0.1",
         "sl": "vars.mother_h",
-        "tp": "entry - (risk * tp_mult)",
+        "tp": "entry - (sl - entry) * 2.0",
         "option_selection": "ATM_CALL"
     }
 }

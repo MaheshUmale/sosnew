@@ -30,16 +30,18 @@
         {
             "id": "OVEREXTENDED",
             "conditions": [
-                "close > moving_avg(history, 20, 'close') + (2 * candle.getATR())",
-                "volume > 50000",
-                "reversal_high = highest(history, 5, 'high')"
+                "close > moving_avg(history, 20, 'close') + (2 * atr)",
+                "volume > 50000"
             ],
-            "capture": {}
+            "capture": {
+                "reversal_high": "highest(history, 5, 'high')"
+            },
+            "timeout": 0
         },
         {
             "id": "BREAKDOWN",
             "conditions": [
-                "close < prev_candle.getLow()",
+                "close < prev_candle.low",
                 "sentiment.pcr_velocity < 0"
             ],
             "capture": {},
@@ -47,10 +49,10 @@
         }
     ],
     "execution": {
-        "side": "SHORT",
-        "entry": "prev_candle.getLow() - 2.0",
+        "side": "SELL",
+        "entry": "prev_candle.low - 2.0",
         "sl": "vars.reversal_high + 1.0",
-        "tp": "entry - (risk * regime.tp)",
+        "tp": "entry - (sl - entry) * 2.0",
         "option_selection": "ATM_PUT"
     }
 }

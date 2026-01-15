@@ -47,6 +47,16 @@ This will fetch the latest historical data for the symbol, run it through the en
 
 To run the engine in live mode, you first need a valid Upstox developer access token.
 
+### Validating Strategies
+
+Before running the engine, it is recommended to validate your strategy files to ensure they are correctly formatted. You can do this by running the `validate_strategies.py` script:
+
+```bash
+python validate_strategies.py
+```
+
+This script will check all the `.json` files in the `strategies` directory against a schema and also validate the syntax of the `asteval` expressions.
+
 1.  **Configure Access Token:**
     Open the `config.json` file and add your Upstox access token:
     ```json
@@ -62,3 +72,15 @@ To run the engine in live mode, you first need a valid Upstox developer access t
     python run.py --mode live
     ```
     The engine will connect to the Upstox WebSocket feed and process live market data.
+
+## Validating Strategies
+
+To ensure that your strategy files are correctly formatted and will not cause errors, you can use the `validate_strategies.py` script. This script will check your strategy files against a schema and validate the syntax of the expressions.
+
+To run the validator, simply execute the following command:
+
+```bash
+python validate_strategies.py
+```
+
+If all your strategy files are valid, you will see a message saying "All strategy files are valid." If there are any errors, they will be printed to the console.

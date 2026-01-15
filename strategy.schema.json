@@ -1,0 +1,93 @@
+{
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "title": "Trading Strategy",
+    "description": "A schema for defining a trading strategy.",
+    "type": "object",
+    "required": [
+        "pattern_id",
+        "regime_config",
+        "phases",
+        "execution"
+    ],
+    "properties": {
+        "pattern_id": {
+            "description": "A unique identifier for the pattern.",
+            "type": "string"
+        },
+        "regime_config": {
+            "description": "Configuration for different market regimes.",
+            "type": "object"
+        },
+        "phases": {
+            "description": "The different phases of the strategy.",
+            "type": "array",
+            "items": {
+                "type": "object",
+                "required": [
+                    "id",
+                    "conditions",
+                    "capture",
+                    "timeout"
+                ],
+                "properties": {
+                    "id": {
+                        "description": "A unique identifier for the phase.",
+                        "type": "string"
+                    },
+                    "conditions": {
+                        "description": "The conditions for the phase.",
+                        "type": "array",
+                        "items": {
+                            "type": "string"
+                        }
+                    },
+                    "capture": {
+                        "description": "The variables to be captured.",
+                        "type": "object"
+                    },
+                    "timeout": {
+                        "description": "The timeout for the phase.",
+                        "type": "integer"
+                    }
+                }
+            }
+        },
+        "execution": {
+            "description": "The execution parameters.",
+            "type": "object",
+            "required": [
+                "side",
+                "entry",
+                "sl",
+                "tp",
+                "option_selection"
+            ],
+            "properties": {
+                "side": {
+                    "description": "The side of the trade.",
+                    "type": "string",
+                    "enum": [
+                        "BUY",
+                        "SELL"
+                    ]
+                },
+                "entry": {
+                    "description": "The entry price.",
+                    "type": "string"
+                },
+                "sl": {
+                    "description": "The stop loss.",
+                    "type": "string"
+                },
+                "tp": {
+                    "description": "The take profit.",
+                    "type": "string"
+                },
+                "option_selection": {
+                    "description": "The option selection strategy.",
+                    "type": "string"
+                }
+            }
+        }
+    }
+}
