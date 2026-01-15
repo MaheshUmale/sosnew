@@ -7,6 +7,7 @@ from python_engine.core.execution_handler import ExecutionHandler
 from python_engine.models.data_models import MarketEvent, MessageType, VolumeBar, Sentiment, OptionChainData
 from engine_config import Config
 from python_engine.core.order_orchestrator import OrderOrchestrator
+from python_engine.core.trade_logger import TradeLog
 from data_sourcing.data_manager import DataManager
 from python_engine.utils.atr_calculator import calculate_atr
 
@@ -14,8 +15,11 @@ def run_backtest(symbol: str):
     # Load configuration
     Config.load('config.json')
 
+    # Initialize TradeLog
+    trade_log = TradeLog('backtest_trades.csv')
+
     # Initialize handlers
-    order_orchestrator = OrderOrchestrator()
+    order_orchestrator = OrderOrchestrator(trade_log)
     option_chain_handler = OptionChainHandler()
     sentiment_handler = SentimentHandler()
     pattern_matcher_handler = PatternMatcherHandler(Config.get('strategies_dir'))
@@ -27,6 +31,10 @@ def run_backtest(symbol: str):
     if candles_df is None or candles_df.empty:
         print("Could not fetch historical data. Aborting.")
         return
+
+    candles_df['timestamp'] = pd.to_datetime(candles_df['timestamp'])
+    candles_df.set_index('timestamp', inplace=True)
+    candles_df.sort_index(inplace=True)
 
     candles_df['atr'] = calculate_atr(candles_df)
 

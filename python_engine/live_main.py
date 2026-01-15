@@ -14,6 +14,7 @@ from python_engine.core.execution_handler import ExecutionHandler
 from python_engine.models.data_models import MarketEvent, MessageType, VolumeBar
 from engine_config import Config
 from python_engine.core.order_orchestrator import OrderOrchestrator
+from python_engine.core.trade_logger import TradeLog
 
 # --- Global State for Streamer ---
 streamer = None
@@ -22,7 +23,8 @@ subscribed_instruments = set()
 class LiveTradingEngine:
     def __init__(self, loop):
         self.loop = loop
-        self.order_orchestrator = OrderOrchestrator()
+        self.trade_log = TradeLog('live_trades.csv')
+        self.order_orchestrator = OrderOrchestrator(self.trade_log)
         self.option_chain_handler = OptionChainHandler()
         self.sentiment_handler = SentimentHandler()
         self.pattern_matcher_handler = PatternMatcherHandler(Config.get('strategies_dir'))

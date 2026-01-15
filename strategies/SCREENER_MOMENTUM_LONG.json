@@ -40,7 +40,7 @@
         }
     ],
     "execution": {
-        "side": "LONG",
+        "side": "BUY",
         "entry": "candle.getClose()",
         "sl": "candle.getLow()",
         "tp": "entry + ( (entry - sl) * 2.0 )",
