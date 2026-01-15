@@ -35,6 +35,7 @@ class Trade:
 @dataclass
 class Position:
     underlying_symbol: str
+    instrument_key: str
     symbol: str
     side: TradeSide
     entry_price: float

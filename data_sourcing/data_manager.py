@@ -49,6 +49,11 @@ class DataManager:
 
         # First, try to get data from the local database
         local_data = self.db_manager.get_historical_candles(symbol, exchange, interval, from_date, to_date)
+        # If from_date is specified, we assume the user wants data for that specific range from the DB.
+        if from_date and local_data is not None and not local_data.empty:
+            print(f"Loaded {len(local_data)} candles for {symbol} from local DB for the specified date range.")
+            return local_data
+
         if local_data is not None and not local_data.empty and len(local_data) >= n_bars:
             print(f"Loaded {len(local_data)} candles for {symbol} from local DB.")
             return local_data.tail(n_bars)
@@ -88,17 +93,28 @@ class DataManager:
 
         return None
 
-    def get_option_chain(self, symbol):
-        today_str = datetime.now().strftime('%Y-%m-%d')
+    def get_option_chain(self, symbol, date=None):
+        target_date = datetime.strptime(date, '%Y-%m-%d') if date else datetime.now()
+        date_str = target_date.strftime('%Y-%m-%d')
 
         # Try to get data from the local database first
-        local_data = self.db_manager.get_option_chain(symbol, today_str)
+        local_data = self.db_manager.get_option_chain(symbol, date_str)
         if local_data is not None and not local_data.empty:
-            print(f"Loaded option chain for {symbol} from local DB.")
+            print(f"Loaded option chain for {symbol} on {date_str} from local DB.")
             return local_data.to_dict('records')
 
-        print(f"Fetching option chain for {symbol} from remote source...")
-        spot_price = self.get_last_traded_price(symbol)
+        print(f"Fetching option chain for {symbol} for date {date_str} from remote source...")
+
+        # For historical dates, we need to fetch a historical spot price for that day
+        if date:
+            candles = self.get_historical_candles(symbol, from_date=date, to_date=date, n_bars=1)
+            if candles is not None and not candles.empty:
+                spot_price = candles.iloc[-1]['close']
+            else:
+                print(f"Could not fetch historical spot price for {symbol} on {date_str}")
+                return None
+        else:
+            spot_price = self.get_last_traded_price(symbol)
         atm_strike = self.calculate_atm_strike(symbol, spot_price)
         strike_range = self._get_strike_range(symbol, atm_strike)
 
@@ -122,7 +138,9 @@ class DataManager:
                                 chain.append({
                                     "strike": strike,
                                     "call_oi_chg": item.call_options.market_data.oi - item.call_options.market_data.prev_oi,
-                                    "put_oi_chg": item.put_options.market_data.oi - item.put_options.market_data.prev_oi
+                                    "put_oi_chg": item.put_options.market_data.oi - item.put_options.market_data.prev_oi,
+                                    "call_instrument_key": item.call_options.instrument_key,
+                                    "put_instrument_key": item.put_options.instrument_key
                                 })
                         chain_data = pd.DataFrame(chain)
         except Exception as e:
@@ -149,8 +167,8 @@ class DataManager:
                         chain_data = pd.DataFrame(chain)
 
         if chain_data is not None and not chain_data.empty:
-            self.db_manager.store_option_chain(symbol, chain_data)
-            print(f"Stored option chain for {symbol} in local DB.")
+            self.db_manager.store_option_chain(symbol, chain_data, date=date_str)
+            print(f"Stored option chain for {symbol} for {date_str} in local DB.")
             return chain_data.to_dict('records')
 
         return None
@@ -190,72 +208,64 @@ class DataManager:
             return atm_strike['pe'], atm_strike['pe_trading_symbol']
 
     def get_historical_candle_for_timestamp(self, symbol, timestamp):
-        # We assume timestamp is a unix timestamp (float or int)
         dt_object = datetime.fromtimestamp(timestamp)
-        from_date = dt_object - timedelta(minutes=5)
-        to_date = dt_object + timedelta(minutes=5)
+        from_date = dt_object - timedelta(minutes=1)
+        to_date = dt_object + timedelta(minutes=1)
 
-        # Use the existing method to get a range of candles
-        candles_df = self.get_historical_candles(symbol, n_bars=10, from_date=from_date, to_date=to_date)
+        # Use the existing method to get a range of candles, expecting only one
+        candles_df = self.get_historical_candles(symbol, n_bars=1, from_date=from_date, to_date=to_date)
 
         if candles_df is not None and not candles_df.empty:
-            # Convert the timestamp column to datetime objects if it's not already
-            if not pd.api.types.is_datetime64_any_dtype(candles_df['timestamp']):
-                candles_df['timestamp'] = pd.to_datetime(candles_df['timestamp'])
-
-            # Find the candle that matches the timestamp
-            # We need to be careful about timezones. Let's assume UTC for now.
-            target_dt = pd.to_datetime(dt_object).tz_localize('UTC')
-
-            # Find the closest candle in time
-            time_diff = (candles_df['timestamp'] - target_dt).abs()
-            closest_candle_row = candles_df.loc[time_diff.idxmin()]
-
-            # If the closest candle is within a reasonable threshold (e.g., 1 minute)
-            if time_diff.min() <= timedelta(minutes=1):
-                return VolumeBar(
-                    symbol=symbol,
-                    timestamp=closest_candle_row['timestamp'].timestamp(),
-                    open=closest_candle_row['open'],
-                    high=closest_candle_row['high'],
-                    low=closest_candle_row['low'],
-                    close=closest_candle_row['close'],
-                    volume=closest_candle_row['volume']
-                )
+            # Since n_bars=1 and the time window is tight, we can assume the last row is the one we want
+            candle_row = candles_df.iloc[-1]
+            return VolumeBar(
+                symbol=symbol,
+                timestamp=candle_row['timestamp'].timestamp(),
+                open=candle_row['open'],
+                high=candle_row['high'],
+                low=candle_row['low'],
+                close=candle_row['close'],
+                volume=candle_row['volume']
+            )
         return None
 
-    def get_historical_atm_option_symbol(self, underlying_symbol, side, spot_price, timestamp):
+    def get_atm_option_details_for_timestamp(self, underlying_symbol, side, spot_price, timestamp):
+        """
+        Finds the ATM option instrument key from the local database for a given timestamp.
+        """
         dt_object = datetime.fromtimestamp(timestamp)
-        strike = self.calculate_atm_strike(underlying_symbol, spot_price)
-        option_type = "CE" if side.upper() == 'BUY' else "PE"
+        date_str = dt_object.strftime('%Y-%m-%d')
 
-        expiry_date = self.get_weekly_expiry_date(dt_object)
+        # 1. Get option chain for that day from the database
+        option_chain_df = self.db_manager.get_option_chain(underlying_symbol, date_str)
 
-        # Format for symbol (e.g., NIFTY26JAN1525500CE)
-        expiry_str = expiry_date.strftime('%d%b%y').upper()
+        if option_chain_df is None or option_chain_df.empty:
+            print(f"No option chain data found in DB for {underlying_symbol} on {date_str}")
+            return None, None
 
-        trading_symbol = f"{underlying_symbol}{expiry_str}{strike}{option_type}"
+        # 2. Calculate ATM strike
+        atm_strike = self.calculate_atm_strike(underlying_symbol, spot_price)
+        if atm_strike is None:
+            return None, None
 
-        instrument_key = SymbolMaster.get_upstox_key(trading_symbol)
+        # 3. Find the closest strike in the option chain
+        closest_strike_row = option_chain_df.iloc[(option_chain_df['strike'] - atm_strike).abs().argsort()[:1]]
 
-        if instrument_key and 'NSE_FO' in instrument_key:
-            return trading_symbol
+        if closest_strike_row.empty:
+            print(f"Could not find a matching strike for ATM {atm_strike} in the option chain.")
+            return None, None
 
-        return None
+        # 4. Return the correct instrument key and the trading symbol
+        option_row = closest_strike_row.iloc[0]
+        instrument_key = option_row['call_instrument_key'] if side.upper() == 'BUY' else option_row['put_instrument_key']
 
-    def get_weekly_expiry_date(self, trade_date):
-        # NIFTY options expire on Thursdays.
-        # If Thursday is a holiday, the expiry is on the previous trading day.
+        trading_symbol = SymbolMaster.get_trading_symbol(instrument_key)
 
-        # Find the next Thursday
-        days_to_thursday = (3 - trade_date.weekday() + 7) % 7
-        expiry_date = trade_date + timedelta(days=days_to_thursday)
+        if not trading_symbol:
+             trading_symbol = instrument_key # Fallback
 
-        # Check if the expiry date is a holiday
-        while expiry_date.strftime('%Y-%m-%d') in self.holidays or expiry_date.weekday() > 4: # Also check for weekends
-            expiry_date -= timedelta(days=1)
+        return instrument_key, trading_symbol
 
-        return expiry_date
 
     def get_pcr(self, symbol):
         data = self.nse_client.get_option_chain(symbol, indices=True)

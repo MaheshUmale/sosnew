@@ -23,7 +23,7 @@ class OrderOrchestrator:
         for position in positions_to_check:
             # For each open option position, get the option's candle for the current timestamp
             option_candle = self._data_manager.get_historical_candle_for_timestamp(
-                symbol=position.symbol,
+                symbol=position.instrument_key, # Use instrument_key for lookup
                 timestamp=event.candle.timestamp
             )
 
@@ -53,40 +53,30 @@ class OrderOrchestrator:
                 del self._open_positions[position.symbol]
 
     def _get_atm_option_details(self, underlying_symbol, side, candle):
-        symbol_map = {
-            "NSE_INDEX|Nifty 50": "NIFTY",
-            "NSE_INDEX|Nifty Bank": "BANKNIFTY",
-            "NIFTY": "NIFTY",
-            "BANKNIFTY": "BANKNIFTY"
-        }
-        symbol_prefix = symbol_map.get(underlying_symbol)
-
-        if not symbol_prefix:
-            return None, None
+        # Simplify symbol prefix extraction
+        symbol_prefix = "NIFTY" if "NIFTY" in underlying_symbol.upper() else "BANKNIFTY"
 
         if self._mode == 'live':
-            # Live mode logic remains the same
             instrument_key, trading_symbol = self._data_manager.get_atm_option_details(symbol_prefix, side.value)
             if instrument_key and trading_symbol:
                 option_price = self._data_manager.get_last_traded_price(instrument_key)
-                return trading_symbol, option_price
+                return trading_symbol, option_price, instrument_key
         else:  # backtest mode
-            # For backtesting, we need to find the historical option instrument and its price
-            trading_symbol = self._data_manager.get_historical_atm_option_symbol(
+            instrument_key, trading_symbol = self._data_manager.get_atm_option_details_for_timestamp(
                 underlying_symbol=symbol_prefix,
                 side=side.value,
                 spot_price=candle.close,
                 timestamp=candle.timestamp
             )
-            if trading_symbol:
+            if trading_symbol and instrument_key:
                 option_candle = self._data_manager.get_historical_candle_for_timestamp(
-                    symbol=trading_symbol,
+                    symbol=instrument_key, # Use instrument_key to be precise
                     timestamp=candle.timestamp
                 )
                 if option_candle:
-                    return trading_symbol, option_candle.close
+                    return trading_symbol, option_candle.close, instrument_key
 
-        return None, None
+        return None, None, None
 
 
     def execute_trade(self, state: PatternState, definition: PatternDefinition, candle, history, prev_candle):
@@ -121,24 +111,27 @@ class OrderOrchestrator:
 
         # This logic should apply to both live and backtest modes for index trading
         is_index = "nifty" in state.symbol.lower() or "banknifty" in state.symbol.lower()
+        instrument_key_to_trade = symbol_to_trade # Default to the underlying
 
         if is_index:
-            option_symbol, option_price = self._get_atm_option_details(state.symbol, original_side, candle)
+            option_symbol, option_price, option_instrument_key = self._get_atm_option_details(state.symbol, original_side, candle)
 
-            if option_symbol and option_price:
+            if option_symbol and option_price and option_instrument_key:
                 # For a SELL signal on the index, we BUY a Put option.
                 # For a BUY signal on the index, we BUY a Call option.
                 # In both cases, the trade side on the option is BUY.
                 side = TradeSide.BUY
 
                 symbol_to_trade = option_symbol
+                instrument_key_to_trade = option_instrument_key
 
                 # We need a simple way to estimate the option's SL/TP from the index's SL/TP.
                 # Using a fixed delta is a common approximation.
                 delta = self._data_manager.get_option_delta(symbol_to_trade)
-                price_difference_sl = spot_entry_price - spot_stop_loss
-                price_difference_tp = spot_take_profit - spot_entry_price
+                price_difference_sl = abs(spot_entry_price - spot_stop_loss)
+                price_difference_tp = abs(spot_take_profit - spot_entry_price)
 
+                # For BUY side (on Calls and Puts), SL is below and TP is above.
                 stop_loss = option_price - (price_difference_sl * delta)
                 take_profit = option_price + (price_difference_tp * delta)
 
@@ -166,7 +159,8 @@ class OrderOrchestrator:
         self._trade_log.log_trade(trade)
 
         position = Position(
-            underlying_symbol=underlying_symbol_for_position,  # New field
+            underlying_symbol=underlying_symbol_for_position,
+            instrument_key=instrument_key_to_trade,
             symbol=symbol_to_trade,
             side=side,
             entry_price=entry_price,
