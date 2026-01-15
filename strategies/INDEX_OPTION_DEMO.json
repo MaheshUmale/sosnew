@@ -26,7 +26,8 @@
             "conditions": [
                 "close > 0"
             ],
-            "capture": {}
+            "capture": {},
+            "timeout": 0
         }
     ],
     "execution": {

@@ -14,7 +14,8 @@
             "conditions": [
                 "candle.getClose() > 100"
             ],
-            "capture": {}
+            "capture": {},
+            "timeout": 0
         }
     ],
     "execution": {
