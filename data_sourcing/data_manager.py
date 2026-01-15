@@ -8,11 +8,11 @@ from datetime import datetime, timedelta
 from python_engine.utils.instrument_loader import InstrumentLoader
 
 class DataManager:
-    def __init__(self):
+    def __init__(self, access_token=None):
         self.instrument_loader = InstrumentLoader()
         self.fno_instruments = {}
         self.tv_client = TVDatafeedClient()
-        self.upstox_client = UpstoxClient()
+        self.upstox_client = UpstoxClient(access_token=access_token)
         self.trendlyne_client = TrendlyneClient()
         self.nse_client = NSEClient()
         SymbolMaster.initialize()

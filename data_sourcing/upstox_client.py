@@ -8,10 +8,9 @@ except ImportError:
     print("[UpstoxClient] engine_config.py not found, Upstox functionality will be disabled.")
 
 class UpstoxClient:
-    def __init__(self):
+    def __init__(self, access_token=None):
         self.api_client = None
         if UPSTOX_AVAILABLE:
-            access_token = os.environ.get('UPSTOX_ACCESS_TOKEN')
             if access_token:
                 self.configuration = upstox_client.Configuration()
                 self.configuration.access_token = access_token

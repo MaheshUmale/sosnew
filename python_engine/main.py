@@ -14,10 +14,10 @@ from python_engine.utils.atr_calculator import calculate_atr
 def run_backtest(symbol: str):
     # Load configuration
     Config.load('config.json')
-
+    access_token = Config.get('upstox_access_token')
    
     # Initialize handlers
-    data_manager = DataManager()
+    data_manager = DataManager(access_token=access_token)
     trade_log = TradeLog(f'backtest_{symbol.replace("|", "_")}.csv')
     order_orchestrator = OrderOrchestrator(trade_log, data_manager, "backtest")
     option_chain_handler = OptionChainHandler()
