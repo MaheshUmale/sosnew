@@ -49,14 +49,12 @@ class DataManager:
 
         # First, try to get data from the local database
         local_data = self.db_manager.get_historical_candles(symbol, exchange, interval, from_date, to_date)
-        # If from_date is specified, we assume the user wants data for that specific range from the DB.
-        if from_date and local_data is not None and not local_data.empty:
-            print(f"Loaded {len(local_data)} candles for {symbol} from local DB for the specified date range.")
-            return local_data
-
-        if local_data is not None and not local_data.empty and len(local_data) >= n_bars:
+        if local_data is not None and not local_data.empty:
             print(f"Loaded {len(local_data)} candles for {symbol} from local DB.")
-            return local_data.tail(n_bars)
+            if from_date:
+                return local_data
+            if len(local_data) >= n_bars:
+                return local_data.tail(n_bars)
 
         # If not in DB or not enough data, fetch from external sources
         print(f"Fetching historical candles for {symbol} from remote source...")
@@ -233,41 +231,63 @@ class DataManager:
 
     def get_atm_option_details_for_timestamp(self, underlying_symbol, side, spot_price, timestamp):
         """
-        Finds the ATM option instrument key from the local database for a given timestamp.
+        Finds the ATM option instrument key by constructing the symbol from historical
+        option chain data and resolving it.
         """
         symbol_prefix = "BANKNIFTY" if "BANK" in underlying_symbol.upper() else "NIFTY"
         dt_object = datetime.fromtimestamp(timestamp)
-        date_str = dt_object.strftime('%Y-%m-%d')
+        datetime_str = dt_object.strftime('%Y-%m-%d %H:%M:%S')
 
-        # 1. Get option chain for that day from the database
-        option_chain_df = self.db_manager.get_option_chain(symbol_prefix, date_str)
+        try:
+            # 1. Query the unified DB for the closest option chain snapshot
+            with self.db_manager as db:
+                query = """
+                    SELECT * FROM option_chain_data
+                    WHERE symbol = ? AND timestamp <= ?
+                    ORDER BY timestamp DESC
+                    LIMIT 100
+                """ # Limit to nearest 100 strikes
+                df = pd.read_sql_query(query, db.conn, params=(symbol_prefix, datetime_str))
 
-        if option_chain_df is None or option_chain_df.empty:
-            print(f"No option chain data found in DB for {underlying_symbol} on {date_str}")
+            if df.empty:
+                print(f"No historical option chain data found for {symbol_prefix} at or before {datetime_str}")
+                return None, None
+
+            # The query returns the closest strikes for the latest timestamp.
+            # The first row contains the expiry we need.
+            expiry_str = df['expiry'].iloc[0]
+
+            # 2. Calculate ATM strike
+            atm_strike = self.calculate_atm_strike(symbol_prefix, spot_price)
+            if atm_strike is None: return None, None
+
+            # 3. Find the closest strike in the fetched DataFrame
+            closest_strike_row = df.iloc[(df['strike'] - atm_strike).abs().argsort()[:1]]
+            if closest_strike_row.empty:
+                print(f"Could not find a matching strike for ATM {atm_strike} in the chain.")
+                return None, None
+
+            strike_price = int(closest_strike_row.iloc[0]['strike'])
+
+            # 4. Construct the historical trading symbol
+            option_type = "CE" if side.upper() == 'BUY' else "PE"
+            expiry_dt = pd.to_datetime(expiry_str)
+            expiry_symbol_str = expiry_dt.strftime('%d%b%y').upper() # e.g., 27JAN26
+
+            trading_symbol = f"{symbol_prefix}{expiry_symbol_str}{strike_price}{option_type}"
+
+            # 5. Resolve the symbol to get the instrument key
+            instrument_key = SymbolMaster.get_upstox_key(trading_symbol)
+
+            if not instrument_key:
+                print(f"Could not resolve instrument key for constructed symbol: {trading_symbol}")
+                return None, None
+
+            return instrument_key, trading_symbol
+
+        except Exception as e:
+            print(f"Error in get_atm_option_details_for_timestamp: {e}")
             return None, None
-
-        # 2. Calculate ATM strike
-        atm_strike = self.calculate_atm_strike(underlying_symbol, spot_price)
-        if atm_strike is None:
-            return None, None
-
-        # 3. Find the closest strike in the option chain
-        closest_strike_row = option_chain_df.iloc[(option_chain_df['strike'] - atm_strike).abs().argsort()[:1]]
-
-        if closest_strike_row.empty:
-            print(f"Could not find a matching strike for ATM {atm_strike} in the option chain.")
-            return None, None
-
-        # 4. Return the correct instrument key and the trading symbol
-        option_row = closest_strike_row.iloc[0]
-        instrument_key = option_row['call_instrument_key'] if side.upper() == 'BUY' else option_row['put_instrument_key']
-
-        trading_symbol = SymbolMaster.get_ticker_from_key(instrument_key)
-
-        if not trading_symbol:
-             trading_symbol = instrument_key # Fallback
-
-        return instrument_key, trading_symbol
 
 
     def get_pcr(self, symbol, date=None):
