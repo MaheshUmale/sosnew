@@ -140,7 +140,9 @@ class DataManager:
                                     "call_oi_chg": item.call_options.market_data.oi - item.call_options.market_data.prev_oi,
                                     "put_oi_chg": item.put_options.market_data.oi - item.put_options.market_data.prev_oi,
                                     "call_instrument_key": item.call_options.instrument_key,
-                                    "put_instrument_key": item.put_options.instrument_key
+                                    "put_instrument_key": item.put_options.instrument_key,
+                                    "call_oi": item.call_options.market_data.oi,
+                                    "put_oi": item.put_options.market_data.oi
                                 })
                         chain_data = pd.DataFrame(chain)
         except Exception as e:
@@ -233,11 +235,12 @@ class DataManager:
         """
         Finds the ATM option instrument key from the local database for a given timestamp.
         """
+        symbol_prefix = "BANKNIFTY" if "BANK" in underlying_symbol.upper() else "NIFTY"
         dt_object = datetime.fromtimestamp(timestamp)
         date_str = dt_object.strftime('%Y-%m-%d')
 
         # 1. Get option chain for that day from the database
-        option_chain_df = self.db_manager.get_option_chain(underlying_symbol, date_str)
+        option_chain_df = self.db_manager.get_option_chain(symbol_prefix, date_str)
 
         if option_chain_df is None or option_chain_df.empty:
             print(f"No option chain data found in DB for {underlying_symbol} on {date_str}")
@@ -259,7 +262,7 @@ class DataManager:
         option_row = closest_strike_row.iloc[0]
         instrument_key = option_row['call_instrument_key'] if side.upper() == 'BUY' else option_row['put_instrument_key']
 
-        trading_symbol = SymbolMaster.get_trading_symbol(instrument_key)
+        trading_symbol = SymbolMaster.get_ticker_from_key(instrument_key)
 
         if not trading_symbol:
              trading_symbol = instrument_key # Fallback
@@ -267,13 +270,59 @@ class DataManager:
         return instrument_key, trading_symbol
 
 
-    def get_pcr(self, symbol):
+    def get_pcr(self, symbol, date=None):
+        # Primary method: NSE Client
         data = self.nse_client.get_option_chain(symbol, indices=True)
-        if data and 'records' in data:
-            filtered = data.get('filtered', {})
-            if filtered:
-                ce_oi = filtered.get('CE', {}).get('totOI', 0)
-                pe_oi = filtered.get('PE', {}).get('totOI', 0)
-                if ce_oi > 0:
-                    return round(pe_oi / ce_oi, 2)
+        if data and 'records' in data and data.get('filtered'):
+            ce_oi = data['filtered'].get('CE', {}).get('totOI', 0)
+            pe_oi = data['filtered'].get('PE', {}).get('totOI', 0)
+            if ce_oi > 0:
+                return round(pe_oi / ce_oi, 2)
+
+        # Failsafe method: Calculate from local option chain data
+        print(f"Primary PCR fetch failed for {symbol}. Using failsafe method.")
+        try:
+            symbol_prefix = "BANKNIFTY" if "BANK" in symbol.upper() else "NIFTY"
+            target_date = datetime.strptime(date, '%Y-%m-%d') if date else datetime.now()
+            date_str = target_date.strftime('%Y-%m-%d')
+
+            # 1. Get option chain from DB
+            option_chain_df = self.db_manager.get_option_chain(symbol_prefix, date_str)
+            if option_chain_df is None or option_chain_df.empty:
+                print("Failsafe PCR: No option chain data in DB.")
+                return 1.0
+
+            # 2. Get spot price to find ATM
+            spot_price = self.get_last_traded_price(symbol)
+            if not spot_price:
+                print("Failsafe PCR: Could not get last traded price.")
+                return 1.0
+
+            # 3. Calculate ATM and strike range
+            atm_strike = self.calculate_atm_strike(symbol_prefix, spot_price)
+            strike_step = 100 if "BANK" in symbol_prefix else 50
+            strike_range_lower = atm_strike - (7 * strike_step)
+            strike_range_upper = atm_strike + (7 * strike_step)
+
+            # 4. Filter chain and calculate PCR
+            pcr_chain = option_chain_df[
+                (option_chain_df['strike'] >= strike_range_lower) &
+                (option_chain_df['strike'] <= strike_range_upper)
+            ]
+
+            if pcr_chain.empty:
+                print("Failsafe PCR: No strikes found in the ATM+/-7 range.")
+                return 1.0
+
+            total_put_oi = pcr_chain['put_oi'].sum()
+            total_call_oi = pcr_chain['call_oi'].sum()
+
+            if total_call_oi > 0:
+                pcr_value = round(total_put_oi / total_call_oi, 2)
+                print(f"Failsafe PCR for {symbol_prefix} calculated as {pcr_value}")
+                return pcr_value
+
+        except Exception as e:
+            print(f"An error occurred during failsafe PCR calculation: {e}")
+
         return 1.0

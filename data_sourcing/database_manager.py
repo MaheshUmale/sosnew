@@ -51,6 +51,8 @@ class DatabaseManager:
                 put_oi_chg INTEGER,
                 call_instrument_key TEXT,
                 put_instrument_key TEXT,
+                call_oi REAL,
+                put_oi REAL,
                 PRIMARY KEY (symbol, timestamp, strike)
             )
         ''', commit=True)

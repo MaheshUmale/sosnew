@@ -54,7 +54,7 @@ class OrderOrchestrator:
 
     def _get_atm_option_details(self, underlying_symbol, side, candle):
         # Simplify symbol prefix extraction
-        symbol_prefix = "NIFTY" if "NIFTY" in underlying_symbol.upper() else "BANKNIFTY"
+        symbol_prefix = "BANKNIFTY" if "BANK" in underlying_symbol.upper() else "NIFTY"
 
         if self._mode == 'live':
             instrument_key, trading_symbol = self._data_manager.get_atm_option_details(symbol_prefix, side.value)

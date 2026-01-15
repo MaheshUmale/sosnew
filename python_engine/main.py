@@ -41,13 +41,16 @@ def run_backtest(symbol: str, from_date: str = None, to_date: str = None):
 
     candles_df['atr'] = calculate_atr(candles_df)
 
-    # For a real backtest, you would align this data by timestamp
-    option_chain = data_manager.get_option_chain(symbol)
-    pcr = data_manager.get_pcr(symbol)
-    market_breadth = data_manager.get_market_breadth()
+    market_breadth = data_manager.get_market_breadth() # This is less time-sensitive
 
     # The processing pipeline
     for timestamp, row in candles_df.iterrows():
+        current_date_str = timestamp.strftime('%Y-%m-%d')
+
+        # Fetch data specific to the current candle's date
+        option_chain = data_manager.get_option_chain(symbol, date=current_date_str)
+        pcr = data_manager.get_pcr(symbol, date=current_date_str)
+
         # Create a MarketEvent from the row
         event = MarketEvent(
             type=MessageType.MARKET_UPDATE,
