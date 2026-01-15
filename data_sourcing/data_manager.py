@@ -7,6 +7,7 @@ import pandas as pd
 from datetime import datetime, timedelta
 from python_engine.utils.instrument_loader import InstrumentLoader
 from data_sourcing.database_manager import DatabaseManager
+from python_engine.models.data_models import VolumeBar
 
 class DataManager:
     def __init__(self, access_token=None):
@@ -18,6 +19,7 @@ class DataManager:
         self.upstox_client = UpstoxClient(access_token=access_token)
         self.trendlyne_client = TrendlyneClient()
         self.nse_client = NSEClient()
+        self.holidays = self.nse_client.get_holiday_list()
         SymbolMaster.initialize()
 
     def get_last_traded_price(self, symbol):
@@ -66,7 +68,12 @@ class DataManager:
             try:
                 instrument_key = SymbolMaster.get_upstox_key(symbol)
                 if instrument_key:
-                    response = self.upstox_client.get_historical_candle_data(instrument_key, interval, to_date.strftime('%Y-%m-%d'), from_date.strftime('%Y-%m-%d'))
+                    today = datetime.now().date()
+                    if to_date.date() < today:
+                        response = self.upstox_client.get_historical_candle_data(instrument_key, interval, to_date.strftime('%Y-%m-%d'), from_date.strftime('%Y-%m-%d'))
+                    else:
+                        response = self.upstox_client.get_intra_day_candle_data(instrument_key, interval)
+
                     if response and hasattr(response, 'data') and hasattr(response.data, 'candles'):
                         df = pd.DataFrame(response.data.candles, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume', 'oi'])
                         df['timestamp'] = pd.to_datetime(df['timestamp'])
@@ -181,6 +188,74 @@ class DataManager:
             return atm_strike['ce'], atm_strike['ce_trading_symbol']
         else:
             return atm_strike['pe'], atm_strike['pe_trading_symbol']
+
+    def get_historical_candle_for_timestamp(self, symbol, timestamp):
+        # We assume timestamp is a unix timestamp (float or int)
+        dt_object = datetime.fromtimestamp(timestamp)
+        from_date = dt_object - timedelta(minutes=5)
+        to_date = dt_object + timedelta(minutes=5)
+
+        # Use the existing method to get a range of candles
+        candles_df = self.get_historical_candles(symbol, n_bars=10, from_date=from_date, to_date=to_date)
+
+        if candles_df is not None and not candles_df.empty:
+            # Convert the timestamp column to datetime objects if it's not already
+            if not pd.api.types.is_datetime64_any_dtype(candles_df['timestamp']):
+                candles_df['timestamp'] = pd.to_datetime(candles_df['timestamp'])
+
+            # Find the candle that matches the timestamp
+            # We need to be careful about timezones. Let's assume UTC for now.
+            target_dt = pd.to_datetime(dt_object).tz_localize('UTC')
+
+            # Find the closest candle in time
+            time_diff = (candles_df['timestamp'] - target_dt).abs()
+            closest_candle_row = candles_df.loc[time_diff.idxmin()]
+
+            # If the closest candle is within a reasonable threshold (e.g., 1 minute)
+            if time_diff.min() <= timedelta(minutes=1):
+                return VolumeBar(
+                    symbol=symbol,
+                    timestamp=closest_candle_row['timestamp'].timestamp(),
+                    open=closest_candle_row['open'],
+                    high=closest_candle_row['high'],
+                    low=closest_candle_row['low'],
+                    close=closest_candle_row['close'],
+                    volume=closest_candle_row['volume']
+                )
+        return None
+
+    def get_historical_atm_option_symbol(self, underlying_symbol, side, spot_price, timestamp):
+        dt_object = datetime.fromtimestamp(timestamp)
+        strike = self.calculate_atm_strike(underlying_symbol, spot_price)
+        option_type = "CE" if side.upper() == 'BUY' else "PE"
+
+        expiry_date = self.get_weekly_expiry_date(dt_object)
+
+        # Format for symbol (e.g., NIFTY26JAN1525500CE)
+        expiry_str = expiry_date.strftime('%d%b%y').upper()
+
+        trading_symbol = f"{underlying_symbol}{expiry_str}{strike}{option_type}"
+
+        instrument_key = SymbolMaster.get_upstox_key(trading_symbol)
+
+        if instrument_key and 'NSE_FO' in instrument_key:
+            return trading_symbol
+
+        return None
+
+    def get_weekly_expiry_date(self, trade_date):
+        # NIFTY options expire on Thursdays.
+        # If Thursday is a holiday, the expiry is on the previous trading day.
+
+        # Find the next Thursday
+        days_to_thursday = (3 - trade_date.weekday() + 7) % 7
+        expiry_date = trade_date + timedelta(days=days_to_thursday)
+
+        # Check if the expiry date is a holiday
+        while expiry_date.strftime('%Y-%m-%d') in self.holidays or expiry_date.weekday() > 4: # Also check for weekends
+            expiry_date -= timedelta(days=1)
+
+        return expiry_date
 
     def get_pcr(self, symbol):
         data = self.nse_client.get_option_chain(symbol, indices=True)

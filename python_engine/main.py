@@ -72,3 +72,5 @@ def run_backtest(symbol: str):
         sentiment_handler.on_event(event)
         pattern_matcher_handler.on_event(event)
         execution_handler.on_event(event)
+
+    trade_log.write_log_file()

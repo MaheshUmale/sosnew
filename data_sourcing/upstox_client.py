@@ -23,22 +23,50 @@ class UpstoxClient:
     def get_historical_candle_data(self, instrument_key, interval, to_date, from_date):
         if not self.api_client: return None
         history_api = upstox_client.HistoryV3Api(self.api_client)
-        interval_unit_map = {
-            '1m': ('minutes', '1'),
-            '1minute': ('minutes', '1'),
-            '30m': ('minutes', '30'),
-            '30minute': ('minutes', '30'),
-            '1d': ('days', '1'),
-            '1day': ('days', '1'),
-        }
-        interval_unit, interval_val = interval_unit_map.get(interval, ('minute', '1'))
-        return history_api.get_historical_candle_data1(
-            instrument_key=instrument_key,
-            unit=interval_unit,
-            interval=interval_val,
-            to_date=to_date,
-            from_date=from_date
-        )
+
+        # More robust interval mapping
+        if 'm' in interval:
+            unit = 'minute'
+            value = interval.replace('m', '')
+        elif 'd' in interval:
+            unit = 'day'
+            value = interval.replace('d', '')
+        else:
+            unit = 'minute'
+            value = '1'
+
+        try:
+            return history_api.get_historical_candle_data1(
+                instrument_key=instrument_key,
+                unit=unit,
+                interval=value,
+                to_date=to_date,
+                from_date=from_date
+            )
+        except upstox_client.ApiException as e:
+            print(f"[UpstoxClient] API Error in get_historical_candle_data: {e.body}")
+            return None
+
+    def get_intra_day_candle_data(self, instrument_key, interval):
+        if not self.api_client: return None
+        history_api = upstox_client.HistoryV3Api(self.api_client)
+
+        if 'm' in interval:
+            unit = 'minute'
+            value = interval.replace('m', '')
+        else: # Default to 1 minute for intraday
+            unit = 'minute'
+            value = '1'
+
+        try:
+            return history_api.get_intra_day_candle_data(
+                instrument_key=instrument_key,
+                unit=unit,
+                interval=value
+            )
+        except upstox_client.ApiException as e:
+            print(f"[UpstoxClient] API Error in get_intra_day_candle_data: {e.body}")
+            return None
 
     def get_market_data_feed_authorize(self):
         if not self.api_client: return None
