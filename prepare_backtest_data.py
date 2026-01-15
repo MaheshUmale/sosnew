@@ -26,7 +26,7 @@ def prepare_data(symbol, from_date, to_date):
     data_manager.get_historical_candles(symbol, from_date=from_date, to_date=to_date, n_bars=100000)
 
     # 2. Iterate through each day to fetch option chain and option candle data
-    symbol_prefix = "NIFTY" if "NIFTY" in symbol.upper() else "BANKNIFTY"
+    symbol_prefix = "BANKNIFTY" if "BANK" in symbol.upper() else "NIFTY"
     for single_date in date_range:
         day_str = single_date.strftime('%Y-%m-%d')
         print(f"\nProcessing data for {day_str}...")
