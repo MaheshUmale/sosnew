@@ -39,6 +39,10 @@ class DataManager:
             interval_map = {'1m': Interval.in_1_minute}
             data = self.tv_client.get_historical_data(symbol, exchange, interval_map.get(interval, Interval.in_1_minute), n_bars)
             if data is not None and not data.empty:
+                            
+                #convert datetime index to timestamp column so that all sources return same DF columens
+                data.reset_index(inplace=True)
+                data.rename(columns={'datetime': 'timestamp'}, inplace=True)
                 return data
 
         # Fallback to Upstox for all symbols

@@ -15,9 +15,7 @@ def run_backtest(symbol: str):
     # Load configuration
     Config.load('config.json')
 
-    # Initialize TradeLog
-    trade_log = TradeLog('backtest_trades.csv')
-
+   
     # Initialize handlers
     trade_log = TradeLog(f'backtest_{symbol.replace("|", "_")}.csv')
     order_orchestrator = OrderOrchestrator(trade_log)
@@ -29,11 +27,15 @@ def run_backtest(symbol: str):
 
     # Fetch and prepare all data before the loop
     candles_df = data_manager.get_historical_candles(symbol, n_bars=1000)
+    
+
     if candles_df is None or candles_df.empty:
         print("Could not fetch historical data. Aborting.")
         return
 
+    print(candles_df.head())
     candles_df['timestamp'] = pd.to_datetime(candles_df['timestamp'])
+
     candles_df.set_index('timestamp', inplace=True)
     candles_df.sort_index(inplace=True)
 
