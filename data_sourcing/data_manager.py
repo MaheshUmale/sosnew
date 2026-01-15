@@ -6,9 +6,12 @@ from SymbolMaster import MASTER as SymbolMaster
 import pandas as pd
 from datetime import datetime, timedelta
 from python_engine.utils.instrument_loader import InstrumentLoader
+from data_sourcing.database_manager import DatabaseManager
 
 class DataManager:
     def __init__(self, access_token=None):
+        self.db_manager = DatabaseManager()
+        self.db_manager.initialize_database()
         self.instrument_loader = InstrumentLoader()
         self.fno_instruments = {}
         self.tv_client = TVDatafeedClient()
@@ -35,38 +38,59 @@ class DataManager:
         strike_step = 100 if "BANKNIFTY" in symbol.upper() else 50
         return [atm_strike + i * strike_step for i in range(-5, 6)]
 
-    def get_historical_candles(self, symbol, exchange='NSE', interval='1m', n_bars=100):
+    def get_historical_candles(self, symbol, exchange='NSE', interval='1m', n_bars=100, from_date=None, to_date=None):
         from engine_config import Config
-        # Prioritize tvDatafeed for index data with volume
+        if to_date is None:
+            to_date = datetime.now()
+        if from_date is None:
+            from_date = to_date - timedelta(days=5)
+
+        # First, try to get data from the local database
+        local_data = self.db_manager.get_historical_candles(symbol, exchange, interval, from_date, to_date)
+        if local_data is not None and not local_data.empty and len(local_data) >= n_bars:
+            print(f"Loaded {len(local_data)} candles for {symbol} from local DB.")
+            return local_data.tail(n_bars)
+
+        # If not in DB or not enough data, fetch from external sources
+        print(f"Fetching historical candles for {symbol} from remote source...")
+        data_to_store = None
         if Config.get('use_tvdatafeed', False) and "NIFTY" in symbol.upper():
             from data_sourcing.tvdatafeed.main import Interval
             interval_map = {'1m': Interval.in_1_minute}
             data = self.tv_client.get_historical_data(symbol, exchange, interval_map.get(interval, Interval.in_1_minute), n_bars)
             if data is not None and not data.empty:
-                            
-                #convert datetime index to timestamp column so that all sources return same DF columens
                 data.reset_index(inplace=True)
                 data.rename(columns={'datetime': 'timestamp'}, inplace=True)
-                return data
+                data_to_store = data
+        else:
+            try:
+                instrument_key = SymbolMaster.get_upstox_key(symbol)
+                if instrument_key:
+                    response = self.upstox_client.get_historical_candle_data(instrument_key, interval, to_date.strftime('%Y-%m-%d'), from_date.strftime('%Y-%m-%d'))
+                    if response and hasattr(response, 'data') and hasattr(response.data, 'candles'):
+                        df = pd.DataFrame(response.data.candles, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume', 'oi'])
+                        df['timestamp'] = pd.to_datetime(df['timestamp'])
+                        data_to_store = df
+            except Exception as e:
+                print(f"[DataManager] Upstox historical data failed for {symbol}: {e}")
 
-        # Fallback to Upstox for all symbols
-        try:
-            instrument_key = SymbolMaster.get_upstox_key(symbol)
-            if instrument_key:
-                from datetime import datetime, timedelta
-                to_date = datetime.now().strftime('%Y-%m-%d')
-                from_date = (datetime.now() - timedelta(days=5)).strftime('%Y-%m-%d')
-                response = self.upstox_client.get_historical_candle_data(instrument_key, interval, to_date, from_date)
-                if response and hasattr(response, 'data') and hasattr(response.data, 'candles'):
-                    df = pd.DataFrame(response.data.candles, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume', 'oi'])
-                    df['timestamp'] = pd.to_datetime(df['timestamp'])
-                    return df
-        except Exception as e:
-            print(f"[DataManager] Upstox historical data failed for {symbol}: {e}")
+        if data_to_store is not None and not data_to_store.empty:
+            self.db_manager.store_historical_candles(symbol, exchange, interval, data_to_store)
+            print(f"Stored {len(data_to_store)} candles for {symbol} in local DB.")
+            return data_to_store.tail(n_bars)
 
         return None
 
     def get_option_chain(self, symbol):
+        today_str = datetime.now().strftime('%Y-%m-%d')
+
+        # Try to get data from the local database first
+        local_data = self.db_manager.get_option_chain(symbol, today_str)
+        if local_data is not None and not local_data.empty:
+            print(f"Loaded option chain for {symbol} from local DB.")
+            return local_data.to_dict('records')
+
+        print(f"Fetching option chain for {symbol} from remote source...")
         spot_price = self.get_last_traded_price(symbol)
         atm_strike = self.calculate_atm_strike(symbol, spot_price)
         strike_range = self._get_strike_range(symbol, atm_strike)
@@ -74,6 +98,7 @@ class DataManager:
         if not strike_range:
             return None
 
+        chain_data = None
         # Priority: Upstox
         try:
             instrument_key = SymbolMaster.get_upstox_key(symbol)
@@ -92,29 +117,35 @@ class DataManager:
                                     "call_oi_chg": item.call_options.market_data.oi - item.call_options.market_data.prev_oi,
                                     "put_oi_chg": item.put_options.market_data.oi - item.put_options.market_data.prev_oi
                                 })
-                        return chain
+                        chain_data = pd.DataFrame(chain)
         except Exception as e:
             print(f"[DataManager] Upstox option chain failed for {symbol}: {e}")
 
-        # Fallback to Trendlyne
-        stock_id = self.trendlyne_client.get_stock_id_for_symbol(symbol)
-        if stock_id:
-            expiries = self.trendlyne_client.get_expiry_dates(stock_id)
-            if expiries:
-                from datetime import datetime
-                now = datetime.now()
-                data = self.trendlyne_client.get_live_oi_data(stock_id, expiries[0], "09:15", now.strftime("%H:%M"))
-                if data and data.get('body', {}).get('oiData'):
-                    chain = []
-                    for strike_str, strike_data in data['body']['oiData'].items():
-                        strike = float(strike_str)
-                        if strike in strike_range:
-                            chain.append({
-                                "strike": strike,
-                                "call_oi_chg": int(strike_data.get('callOiChange', 0)),
-                                "put_oi_chg": int(strike_data.get('putOiChange', 0))
-                            })
-                    return chain
+        # Fallback to Trendlyne if Upstox fails or returns no data
+        if chain_data is None or chain_data.empty:
+            stock_id = self.trendlyne_client.get_stock_id_for_symbol(symbol)
+            if stock_id:
+                expiries = self.trendlyne_client.get_expiry_dates(stock_id)
+                if expiries:
+                    now = datetime.now()
+                    data = self.trendlyne_client.get_live_oi_data(stock_id, expiries[0], "09:15", now.strftime("%H:%M"))
+                    if data and data.get('body', {}).get('oiData'):
+                        chain = []
+                        for strike_str, strike_data in data['body']['oiData'].items():
+                            strike = float(strike_str)
+                            if strike in strike_range:
+                                chain.append({
+                                    "strike": strike,
+                                    "call_oi_chg": int(strike_data.get('callOiChange', 0)),
+                                    "put_oi_chg": int(strike_data.get('putOiChange', 0))
+                                })
+                        chain_data = pd.DataFrame(chain)
+
+        if chain_data is not None and not chain_data.empty:
+            self.db_manager.store_option_chain(symbol, chain_data)
+            print(f"Stored option chain for {symbol} in local DB.")
+            return chain_data.to_dict('records')
+
         return None
 
     def get_market_breadth(self):

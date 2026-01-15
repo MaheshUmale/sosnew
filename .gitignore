@@ -128,3 +128,4 @@ config.json
 # Generated files
 backtest_trades.csv
 live_trades.csv
+sos_master_data.db
