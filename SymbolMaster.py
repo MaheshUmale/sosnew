@@ -29,7 +29,7 @@ Author: Mahesh
 Version: 1.0
 """
 
-import sqlite3
+from data_sourcing.database_manager import DatabaseManager
 import requests
 import gzip
 import io
@@ -47,21 +47,8 @@ class SymbolMaster:
         """Singleton pattern implementation."""
         if cls._instance is None:
             cls._instance = super(SymbolMaster, cls).__new__(cls)
+            cls._instance.db_manager = DatabaseManager()
         return cls._instance
-
-    def _init_sqlite_cache(self):
-        """Initialize the SQLite database for instrument mappings."""
-        db_path = "sos_master_data.db"
-        conn = sqlite3.connect(db_path)
-        cursor = conn.cursor()
-        cursor.execute('''CREATE TABLE IF NOT EXISTS instrument_master (
-                            trading_symbol TEXT PRIMARY KEY,
-                            instrument_key TEXT,
-                            segment TEXT,
-                            name TEXT
-                          )''')
-        conn.commit()
-        return conn
 
     def initialize(self):
         """
@@ -70,34 +57,28 @@ class SymbolMaster:
         if self._initialized:
             return
 
-        import sqlite3
         print("[SymbolMaster] Initializing Instrument Keys...")
-        db_path = "sos_master_data.db"
         cache_file = "upstox_instruments.json.gz"
         cache_age_seconds = 24 * 60 * 60  # 24 hours
-        
+
         # 1. Try SQLite Cache first
         try:
-            if os.path.exists(db_path):
-                conn = sqlite3.connect(db_path)
-                df_cache = pd.read_sql_query("SELECT * FROM instrument_master", conn)
-                conn.close()
-                
-                if not df_cache.empty:
-                    print(f"  [INFO] Loading from SQLite cache: {db_path}")
-                    for _, row in df_cache.iterrows():
-                        name = row['trading_symbol'].upper()
-                        key = row['instrument_key']
-                        segment = row['segment']
-                        self._mappings[name] = key
-                        self._reverse_mappings[key] = (name, segment)
-                        if segment == 'NSE_INDEX':
-                            if row['name'] == "Nifty 50": self._mappings["NIFTY"] = key
-                            elif row['name'] == "Nifty Bank": self._mappings["BANKNIFTY"] = key
-                    
-                    print(f"  ✓ Loaded {len(self._mappings)} keys from SQLite.")
-                    self._initialized = True
-                    return
+            df_cache = self.db_manager.get_instrument_master()
+            if not df_cache.empty:
+                print(f"  [INFO] Loading from SQLite cache: sos_master_data.db")
+                for _, row in df_cache.iterrows():
+                    name = row['trading_symbol'].upper()
+                    key = row['instrument_key']
+                    segment = row['segment']
+                    self._mappings[name] = key
+                    self._reverse_mappings[key] = (name, segment)
+                    if segment == 'NSE_INDEX':
+                        if row['name'] == "Nifty 50": self._mappings["NIFTY"] = key
+                        elif row['name'] == "Nifty Bank": self._mappings["BANKNIFTY"] = key
+
+                print(f"  ✓ Loaded {len(self._mappings)} keys from SQLite.")
+                self._initialized = True
+                return
         except Exception as e:
             print(f"  [WARN] SQLite cache load failed: {e}")
 
@@ -131,11 +112,9 @@ class SymbolMaster:
                 df = pd.read_json(f)
 
             df_filtered = df[df['segment'].isin(['NSE_EQ', 'NSE_INDEX', 'NSE_FO'])][['trading_symbol', 'instrument_key', 'segment', 'name']].copy()
-            
+
             # Save to SQLite for next time
-            conn = self._init_sqlite_cache()
-            df_filtered.to_sql('instrument_master', conn, if_exists='replace', index=False)
-            conn.close()
+            self.db_manager.store_instrument_master(df_filtered)
 
             for _, row in df_filtered.iterrows():
                 name = row['trading_symbol'].upper()

@@ -3,6 +3,7 @@ import json
 import threading
 import time
 from datetime import datetime
+import pandas as pd
 
 import upstox_client
 from upstox_client.feeder.market_data_streamer_v3 import MarketDataStreamerV3
@@ -16,6 +17,7 @@ from engine_config import Config
 from python_engine.core.order_orchestrator import OrderOrchestrator
 from python_engine.core.trade_logger import TradeLog
 from data_sourcing.data_manager import DataManager
+from SymbolMaster import MASTER as SymbolMaster
 
 # --- Global State for Streamer ---
 streamer = None
@@ -56,6 +58,23 @@ class LiveTradingEngine:
             for symbol_key, feed in data['feeds'].items():
                 ohlc = feed.get('ff', {}).get('marketFF', {}).get('ohlc')
                 if ohlc:
+                    # Create a DataFrame for the new candle data
+                    candle_df = pd.DataFrame([{
+                        'timestamp': datetime.now(),
+                        'open': ohlc['o'],
+                        'high': ohlc['h'],
+                        'low': ohlc['l'],
+                        'close': ohlc['c'],
+                        'volume': feed.get('ff', {}).get('marketFF', {}).get('vtt', 0),
+                        'oi': 0  # Default OI to 0 for live data
+                    }])
+
+                    # Store the candle data in the database
+                    ticker = SymbolMaster.get_ticker_from_key(symbol_key)
+                    exchange = Config.get('live_data_exchange', 'NSE')
+                    interval = Config.get('live_data_interval', '1m')
+                    self.data_manager.db_manager.store_historical_candles(ticker, exchange, interval, candle_df)
+
                     event = MarketEvent(
                         type=MessageType.MARKET_UPDATE,
                         timestamp=datetime.now().timestamp(),
