@@ -159,6 +159,14 @@ class SymbolMaster:
         if s_upper in self._mappings:
             return self._mappings[s_upper]
 
+        # 3. Fallback for synthetic historical option symbols
+        # For backtesting, we might be given a symbol like 'NIFTY24MAY19000CE'
+        # which might not be in the master if it's expired.
+        # In this case, we'll return the symbol itself, assuming the data fetcher can handle it.
+        if "CE" in s_upper or "PE" in s_upper:
+            print(f"  [WARN] Upstox key not found for '{symbol}'. Returning as-is for historical data lookup.")
+            return symbol
+
         return None
 
     def get_ticker_from_key(self, key):
@@ -184,6 +192,9 @@ class SymbolMaster:
                     return "NSE|INDEX|NIFTY"
                 if name == "NIFTY BANK":
                     return "NSE|INDEX|BANKNIFTY"
+            # For options, the trading_symbol is what we want
+            if segment == 'NSE_FO':
+                return name
             return name
 
         return key
