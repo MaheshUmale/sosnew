@@ -18,7 +18,7 @@ def run_backtest(symbol: str, from_date: str = None, to_date: str = None):
    
     # Initialize handlers
     data_manager = DataManager(access_token=access_token)
-    trade_log = TradeLog(f'backtest_{symbol}.csv')
+    trade_log = TradeLog(f'backtest_{symbol.replace("|", "_")}.csv')
     order_orchestrator = OrderOrchestrator(trade_log, data_manager, "backtest")
     option_chain_handler = OptionChainHandler()
     sentiment_handler = SentimentHandler()
