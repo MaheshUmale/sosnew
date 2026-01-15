@@ -49,3 +49,13 @@ class NSEClient:
         headers["Referer"] = f"{self.base_url}/market-data/live-equity-market"
         self.session.headers.update(headers)
         return self._make_get_request(url)
+
+    def get_holiday_list(self):
+        url = f"{self.base_url}/api/holiday-master"
+        headers = self.headers.copy()
+        headers["Referer"] = f"{self.base_url}/resources/exchange-communication-holidays"
+        self.session.headers.update(headers)
+        data = self._make_get_request(url)
+        if data and 'trading' in data:
+            return [h['tradingDate'] for h in data['trading']]
+        return []

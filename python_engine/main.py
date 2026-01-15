@@ -11,14 +11,14 @@ from python_engine.core.trade_logger import TradeLog
 from data_sourcing.data_manager import DataManager
 from python_engine.utils.atr_calculator import calculate_atr
 
-def run_backtest(symbol: str):
+def run_backtest(symbol: str, from_date: str = None, to_date: str = None):
     # Load configuration
     Config.load('config.json')
     access_token = Config.get('upstox_access_token')
    
     # Initialize handlers
     data_manager = DataManager(access_token=access_token)
-    trade_log = TradeLog(f'backtest_{symbol.replace("|", "_")}.csv')
+    trade_log = TradeLog(f'backtest_{symbol}.csv')
     order_orchestrator = OrderOrchestrator(trade_log, data_manager, "backtest")
     option_chain_handler = OptionChainHandler()
     sentiment_handler = SentimentHandler()
@@ -26,7 +26,7 @@ def run_backtest(symbol: str):
     execution_handler = ExecutionHandler(order_orchestrator)
 
     # Fetch and prepare all data before the loop
-    candles_df = data_manager.get_historical_candles(symbol, n_bars=1000)
+    candles_df = data_manager.get_historical_candles(symbol, n_bars=1000, from_date=from_date, to_date=to_date)
     
 
     if candles_df is None or candles_df.empty:
@@ -72,3 +72,5 @@ def run_backtest(symbol: str):
         sentiment_handler.on_event(event)
         pattern_matcher_handler.on_event(event)
         execution_handler.on_event(event)
+
+    trade_log.write_log_file()
