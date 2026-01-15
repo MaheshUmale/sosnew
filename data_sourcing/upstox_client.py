@@ -25,17 +25,17 @@ class UpstoxClient:
         if not self.api_client: return None
         history_api = upstox_client.HistoryV3Api(self.api_client)
         interval_unit_map = {
-            '1m': ('minute', '1'),
-            '1minute': ('minute', '1'),
-            '30m': ('minute', '30'),
-            '30minute': ('minute', '30'),
-            '1d': ('day', '1'),
-            '1day': ('day', '1'),
+            '1m': ('minutes', '1'),
+            '1minute': ('minutes', '1'),
+            '30m': ('minutes', '30'),
+            '30minute': ('minutes', '30'),
+            '1d': ('days', '1'),
+            '1day': ('days', '1'),
         }
         interval_unit, interval_val = interval_unit_map.get(interval, ('minute', '1'))
         return history_api.get_historical_candle_data1(
             instrument_key=instrument_key,
-            interval_unit=interval_unit,
+            unit=interval_unit,
             interval=interval_val,
             to_date=to_date,
             from_date=from_date

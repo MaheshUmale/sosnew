@@ -11,6 +11,12 @@ class ExecutionHandler:
         if triggered_machine:
             triggered_state = triggered_machine.state
             definition = triggered_machine.definition
-            self._order_orchestrator.execute_trade(triggered_state, definition, event.candle)
+            self._order_orchestrator.execute_trade(
+                triggered_state,
+                definition,
+                event.candle,
+                triggered_machine.history,
+                triggered_machine.prev_candle
+            )
             initial_phase_id = definition.phases[0].id
             triggered_state.reset(initial_phase_id)

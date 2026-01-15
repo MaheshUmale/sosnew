@@ -49,7 +49,7 @@
         }
     ],
     "execution": {
-        "side": "LONG",
+        "side": "BUY",
         "entry": "vars.block_high + 0.5",
         "sl": "vars.block_low - 2.0",
         "tp": "entry + ( (entry - sl) * 3.0 )",

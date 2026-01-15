@@ -24,28 +24,29 @@
         {
             "id": "SETUP",
             "conditions": [
-                "candle.getClose() > moving_avg(history, 20, 'close')",
-                "candle.getVolume() > moving_avg(history, 20, 'volume')",
-                "ema20 = moving_avg(history, 20, 'close')",
-                "vol_avg = moving_avg(history, 20, 'volume')"
+                "close > moving_avg(history, 20, 'close')",
+                "volume > moving_avg(history, 20, 'volume')"
             ],
-            "capture": {}
+            "capture": {
+                "ema20": "moving_avg(history, 20, 'close')",
+                "vol_avg": "moving_avg(history, 20, 'volume')"
+            }
         },
         {
             "id": "TRIGGER",
             "conditions": [
-                "candle.getClose() > vars.ema20",
-                "candle.getVolume() > vars.vol_avg * 1.2",
-                "candle.getClose() > candle.getOpen()"
+                "close > vars.ema20",
+                "volume > vars.vol_avg * 1.2",
+                "close > open"
             ],
             "capture": {}
         }
     ],
     "execution": {
-        "side": "LONG",
-        "entry": "candle.getClose()",
-        "sl": "candle.getLow() - (candle.getClose() - candle.getLow()) * 0.5",
-        "tp": "entry + ((entry - sl) * tp_mult)",
+        "side": "BUY",
+        "entry": "close",
+        "sl": "low - (close - low) * 0.5",
+        "tp": "close + ( (close - sl) * 2.0 )",
         "option_selection": "ATM_CALL"
     }
 }

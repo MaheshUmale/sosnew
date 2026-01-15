@@ -30,9 +30,9 @@
         }
     ],
     "execution": {
-        "side": "LONG",
-        "entry": "candle.getClose()",
-        "sl": "candle.getLow() - 50.0",
+        "side": "BUY",
+        "entry": "close",
+        "sl": "low - 50.0",
         "tp": "entry + 100.0",
         "option_selection": "ATM_CALL"
     }
