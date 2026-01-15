@@ -21,6 +21,7 @@ class TradeSide(Enum):
 @dataclass
 class Trade:
     trade_id: str
+    pattern_id: str
     symbol: str
     side: TradeSide
     entry_time: datetime

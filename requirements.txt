@@ -3,3 +3,4 @@ pandas
 websocket-client
 requests
 upstox-python-sdk @ git+https://github.com/upstox/upstox-python.git
+jsonschema
