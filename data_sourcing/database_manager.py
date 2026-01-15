@@ -75,7 +75,7 @@ class DatabaseManager:
         from SymbolMaster import MASTER as SymbolMaster
         instrument_key = SymbolMaster.get_upstox_key(symbol)
         if not instrument_key:
-            instrument_key = symbol # Fallback for symbols not in master
+            instrument_key = symbol  # Fallback for symbols not in master
 
         with self as db:
             df_to_insert = candles_df.copy()
@@ -83,25 +83,37 @@ class DatabaseManager:
             df_to_insert['exchange'] = exchange
             df_to_insert['interval'] = interval
 
-            # Ensure timestamp column is truncated to the minute for consistent 1m candles
-            df_to_insert['timestamp'] = pd.to_datetime(df_to_insert['timestamp']).apply(lambda dt: dt.replace(second=0, microsecond=0))
-            # Format for SQLite
-            df_to_insert['timestamp'] = df_to_insert['timestamp'].dt.strftime('%Y-%m-%d %H:%M:%S')
-
+            # Data Type Coercion and Formatting
+            df_to_insert['timestamp'] = pd.to_datetime(df_to_insert['timestamp']).dt.strftime('%Y-%m-%d %H:%M:%S')
             if 'oi' not in df_to_insert.columns:
-                df_to_insert['oi'] = 0 # Default OI to 0 if not provided
+                df_to_insert['oi'] = 0
+            df_to_insert['oi'] = pd.to_numeric(df_to_insert['oi'], errors='coerce').fillna(0).astype(int)
+            for col in ['open', 'high', 'low', 'close']:
+                 df_to_insert[col] = pd.to_numeric(df_to_insert[col], errors='coerce')
+            df_to_insert['volume'] = pd.to_numeric(df_to_insert['volume'], errors='coerce').fillna(0).astype(int)
 
-            # Reorder columns to match the table schema for executemany
+
             table_cols = ['symbol', 'exchange', 'interval', 'timestamp', 'open', 'high', 'low', 'close', 'volume', 'oi']
             df_to_insert = df_to_insert[table_cols]
 
-            # Create the INSERT OR REPLACE statement
-            insert_query = f"INSERT OR REPLACE INTO historical_candles ({', '.join(table_cols)}) VALUES ({','.join(['?']*len(table_cols))})"
+            try:
+                # Use to_sql with a temporary table for robust insertion
+                df_to_insert.to_sql('temp_historical_candles', db.conn, if_exists='replace', index=False)
 
-            # Execute using executemany
-            cursor = db.conn.cursor()
-            cursor.executemany(insert_query, df_to_insert.to_records(index=False))
-            db.conn.commit()
+                # Use INSERT OR REPLACE to merge data from the temp table
+                merge_query = f"""
+                    INSERT OR REPLACE INTO historical_candles ({', '.join(table_cols)})
+                    SELECT {', '.join(table_cols)} FROM temp_historical_candles
+                """
+                db.conn.execute(merge_query)
+                db.conn.commit()
+
+            except Exception as e:
+                print(f"Error storing historical candles for {symbol}: {e}")
+                db.conn.rollback()
+            finally:
+                # Clean up the temporary table
+                db.conn.execute("DROP TABLE IF EXISTS temp_historical_candles")
 
     def get_historical_candles(self, symbol, exchange, interval, from_date, to_date):
         from SymbolMaster import MASTER as SymbolMaster
