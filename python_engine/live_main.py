@@ -15,6 +15,7 @@ from python_engine.models.data_models import MarketEvent, MessageType, VolumeBar
 from engine_config import Config
 from python_engine.core.order_orchestrator import OrderOrchestrator
 from python_engine.core.trade_logger import TradeLog
+from data_sourcing.data_manager import DataManager
 
 # --- Global State for Streamer ---
 streamer = None
@@ -23,8 +24,9 @@ subscribed_instruments = set()
 class LiveTradingEngine:
     def __init__(self, loop):
         self.loop = loop
+        self.data_manager = DataManager()
         self.trade_log = TradeLog('live_trades.csv')
-        self.order_orchestrator = OrderOrchestrator(self.trade_log)
+        self.order_orchestrator = OrderOrchestrator(self.trade_log, self.data_manager, "live")
         self.option_chain_handler = OptionChainHandler()
         self.sentiment_handler = SentimentHandler()
         self.pattern_matcher_handler = PatternMatcherHandler(Config.get('strategies_dir'))
@@ -35,7 +37,14 @@ class LiveTradingEngine:
             'NSE_INDEX|Nifty 50',
             'NSE_INDEX|Nifty Bank',
         }
+
+        fno_instruments = self.data_manager.load_and_cache_fno_instruments()
+        option_symbols_to_subscribe = []
+        for symbol, data in fno_instruments.items():
+            option_symbols_to_subscribe.extend(data['all_keys'])
+
         subscribed_instruments.update(self.symbols)
+        subscribed_instruments.update(option_symbols_to_subscribe)
 
     def on_message(self, message):
         """Thread-safe callback to schedule message processing on the main event loop."""

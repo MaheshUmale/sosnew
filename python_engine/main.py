@@ -17,13 +17,13 @@ def run_backtest(symbol: str):
 
    
     # Initialize handlers
+    data_manager = DataManager()
     trade_log = TradeLog(f'backtest_{symbol.replace("|", "_")}.csv')
-    order_orchestrator = OrderOrchestrator(trade_log)
+    order_orchestrator = OrderOrchestrator(trade_log, data_manager, "backtest")
     option_chain_handler = OptionChainHandler()
     sentiment_handler = SentimentHandler()
     pattern_matcher_handler = PatternMatcherHandler(Config.get('strategies_dir'))
     execution_handler = ExecutionHandler(order_orchestrator)
-    data_manager = DataManager()
 
     # Fetch and prepare all data before the loop
     candles_df = data_manager.get_historical_candles(symbol, n_bars=1000)

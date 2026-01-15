@@ -4,22 +4,26 @@ from data_sourcing.trendlyne_client import TrendlyneClient
 from data_sourcing.nse_client import NSEClient
 from SymbolMaster import MASTER as SymbolMaster
 import pandas as pd
+from datetime import datetime, timedelta
+from python_engine.utils.instrument_loader import InstrumentLoader
 
 class DataManager:
     def __init__(self):
+        self.instrument_loader = InstrumentLoader()
+        self.fno_instruments = {}
         self.tv_client = TVDatafeedClient()
         self.upstox_client = UpstoxClient()
         self.trendlyne_client = TrendlyneClient()
         self.nse_client = NSEClient()
         SymbolMaster.initialize()
 
-    def get_spot_price(self, symbol):
+    def get_last_traded_price(self, symbol):
         candles = self.get_historical_candles(symbol, n_bars=1)
         if candles is not None and not candles.empty:
             return candles.iloc[-1]['close']
         return None
 
-    def _calculate_atm_strike(self, symbol, spot_price):
+    def calculate_atm_strike(self, symbol, spot_price):
         if spot_price is None:
             return None
         strike_step = 100 if "BANKNIFTY" in symbol.upper() else 50
@@ -63,8 +67,8 @@ class DataManager:
         return None
 
     def get_option_chain(self, symbol):
-        spot_price = self.get_spot_price(symbol)
-        atm_strike = self._calculate_atm_strike(symbol, spot_price)
+        spot_price = self.get_last_traded_price(symbol)
+        atm_strike = self.calculate_atm_strike(symbol, spot_price)
         strike_range = self._get_strike_range(symbol, atm_strike)
 
         if not strike_range:
@@ -115,6 +119,37 @@ class DataManager:
 
     def get_market_breadth(self):
         return self.nse_client.get_market_breadth()
+
+    def get_option_delta(self, option_symbol):
+        # TODO: In a real implementation, you would fetch the delta from a data provider.
+        # For now, we'll return a hardcoded value.
+        return 0.5
+
+    def load_and_cache_fno_instruments(self):
+        nifty_spot = self.get_last_traded_price('NSE_INDEX|Nifty 50')
+        banknifty_spot = self.get_last_traded_price('NSE_INDEX|Nifty Bank')
+
+        current_spots = {
+            "NIFTY": nifty_spot,
+            "BANKNIFTY": banknifty_spot
+        }
+
+        self.fno_instruments = self.instrument_loader.get_upstox_instruments(["NIFTY", "BANKNIFTY"], current_spots)
+        return self.fno_instruments
+
+    def get_atm_option_details(self, symbol, side):
+        instrument_data = self.fno_instruments.get(symbol)
+        if not instrument_data:
+            return None, None
+
+        full_symbol = "NSE_INDEX|Nifty 50" if symbol == "NIFTY" else "NSE_INDEX|Nifty Bank"
+        spot_price = self.get_last_traded_price(full_symbol)
+        atm_strike = min(instrument_data['options'], key=lambda x: abs(x['strike'] - spot_price))
+
+        if side == 'BUY':
+            return atm_strike['ce'], atm_strike['ce_trading_symbol']
+        else:
+            return atm_strike['pe'], atm_strike['pe_trading_symbol']
 
     def get_pcr(self, symbol):
         data = self.nse_client.get_option_chain(symbol, indices=True)
