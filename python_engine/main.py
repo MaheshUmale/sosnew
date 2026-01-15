@@ -63,7 +63,7 @@ def run_backtest(symbol: str):
                 volume=row['volume'],
                 atr=row['atr']
             ),
-            option_chain=[OptionChainData(**d) for d in option_chain] if option_chain else None,
+            option_chain=option_chain,
             sentiment=Sentiment(pcr=pcr, advances=market_breadth.get('advances', 0), declines=market_breadth.get('declines', 0)) if pcr and market_breadth else None
         )
 

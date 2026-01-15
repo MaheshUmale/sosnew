@@ -1,7 +1,7 @@
 import csv
-from python_engine.models.trade import Trade, TradeOutcome
+from python_engine.models.trade import Trade, TradeOutcome, TradeSide
 import os
-
+from datetime import datetime
 class TradeLog:
     def __init__(self, log_file: str):
         self.log_file = log_file
@@ -31,28 +31,53 @@ class TradeLog:
         else:
             self.log_trade(trade)
 
-    def _write_trade(self, trade: Trade):
+    def _write_trade(self, trade: Trade, is_new=True):
         pnl = 0
-        if trade.outcome != TradeOutcome.IN_PROGRESS:
-            if trade.side.value == 'BUY':
-                pnl = trade.exit_price - trade.entry_price
-            else:
-                pnl = trade.entry_price - trade.exit_price
+        if trade.outcome != TradeOutcome.IN_PROGRESS and trade.exit_price is not None:
+            pnl = trade.exit_price - trade.entry_price if trade.side == TradeSide.BUY else trade.entry_price - trade.exit_price
 
-        with open(self.log_file, 'a', newline='') as f:
+        # Format timestamps
+        entry_time_str = datetime.fromtimestamp(trade.entry_time).strftime('%Y-%m-%d %H:%M:%S') if trade.entry_time else ""
+        exit_time_str = datetime.fromtimestamp(trade.exit_time).strftime('%Y-%m-%d %H:%M:%S') if trade.exit_time else ""
+
+        row = [
+            trade.trade_id, trade.pattern_id, trade.symbol, trade.side.value, entry_time_str,
+            trade.entry_price, exit_time_str, trade.exit_price,
+            trade.stop_loss, trade.take_profit, trade.outcome.value, pnl
+        ]
+
+        if is_new:
+            with open(self.log_file, 'a', newline='') as f:
+                writer = csv.writer(f)
+                writer.writerow(row)
+        else:
+            # For updates, we read all, find the line, and write back
+            self._rewrite_all_trades()
+    def _rewrite_all_trades(self):
+        """Rewrites the entire log file from the in-memory dictionary of trades."""
+        temp_file = self.log_file + '.tmp'
+        with open(temp_file, 'w', newline='') as f:
             writer = csv.writer(f)
             writer.writerow([
-                trade.trade_id, trade.pattern_id, trade.symbol, trade.side, trade.entry_time,
-                trade.entry_price, trade.exit_time, trade.exit_price,
-                trade.stop_loss, trade.take_profit, trade.outcome, pnl
+                'trade_id', 'pattern_id', 'symbol', 'side', 'entry_time', 'entry_price',
+                'exit_time', 'exit_price', 'stop_loss', 'take_profit', 'outcome', 'pnl'
             ])
+            for trade_id in sorted(self._trades.keys()): # Sort to maintain order
+                trade = self._trades[trade_id]
+                pnl = 0
+                if trade.outcome != TradeOutcome.IN_PROGRESS and trade.exit_price is not None:
+                    pnl = trade.exit_price - trade.entry_price if trade.side == TradeSide.BUY else trade.entry_price - trade.exit_price
 
-    def _rewrite_all_trades(self):
-        # This is a temporary inefficient implementation for simplicity
-        os.remove(self.log_file)
-        self._initialize_log_file()
-        for trade_id in self._trades:
-            self._write_trade(self._trades[trade_id])
+                entry_time_str = datetime.fromtimestamp(trade.entry_time).strftime('%Y-%m-%d %H:%M:%S') if trade.entry_time else ""
+                exit_time_str = datetime.fromtimestamp(trade.exit_time).strftime('%Y-%m-%d %H:%M:%S') if trade.exit_time else ""
+
+                writer.writerow([
+                    trade.trade_id, trade.pattern_id, trade.symbol, trade.side.value, entry_time_str,
+                    trade.entry_price, exit_time_str, trade.exit_price,
+                    trade.stop_loss, trade.take_profit, trade.outcome.value, pnl
+                ])
+
+        os.replace(temp_file, self.log_file)
 
     def get_trade(self, trade_id: str) -> Trade:
         return self._trades.get(trade_id)
