@@ -56,16 +56,23 @@ class LiveTradingEngine:
         """Asynchronously processes the market data."""
         if 'feeds' in data:
             for symbol_key, feed in data['feeds'].items():
-                ohlc = feed.get('ff', {}).get('marketFF', {}).get('ohlc')
-                if ohlc:
+                market_ohlc_list = feed.get('ff', {}).get('marketFF', {}).get('marketOHLC', {}).get('ohlc', [])
+                one_min_candle = None
+                for ohlc_item in market_ohlc_list:
+                    if ohlc_item.get('interval') == 'I1':
+                        one_min_candle = ohlc_item
+                        break
+
+                if one_min_candle:
+                    candle_timestamp = datetime.fromtimestamp(int(one_min_candle['ts']) / 1000)
                     # Create a DataFrame for the new candle data
                     candle_df = pd.DataFrame([{
-                        'timestamp': datetime.now(),
-                        'open': ohlc['o'],
-                        'high': ohlc['h'],
-                        'low': ohlc['l'],
-                        'close': ohlc['c'],
-                        'volume': feed.get('ff', {}).get('marketFF', {}).get('vtt', 0),
+                        'timestamp': candle_timestamp,
+                        'open': one_min_candle['open'],
+                        'high': one_min_candle['high'],
+                        'low': one_min_candle['low'],
+                        'close': one_min_candle['close'],
+                        'volume': int(one_min_candle['vol']),
                         'oi': 0  # Default OI to 0 for live data
                     }])
 
@@ -81,12 +88,12 @@ class LiveTradingEngine:
                         symbol=symbol_key,
                         candle=VolumeBar(
                             symbol=symbol_key,
-                            timestamp=datetime.now().timestamp(),
-                            open=ohlc['o'],
-                            high=ohlc['h'],
-                            low=ohlc['l'],
-                            close=ohlc['c'],
-                            volume=feed.get('ff', {}).get('marketFF', {}).get('vtt', 0)
+                            timestamp=candle_timestamp.timestamp(),
+                            open=one_min_candle['open'],
+                            high=one_min_candle['high'],
+                            low=one_min_candle['low'],
+                            close=one_min_candle['close'],
+                            volume=int(one_min_candle['vol'])
                         )
                     )
                     self.option_chain_handler.on_event(event)
