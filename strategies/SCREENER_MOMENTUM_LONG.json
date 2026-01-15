@@ -20,29 +20,34 @@
             "conditions": [
                 "vars.screener.rvol > 1.2",
                 "vars.screener.change_from_open > 0.3"
-            ]
+            ],
+            "timeout": 0,
+            "capture": {}
         },
         {
             "id": "CONSOLIDATION_VALIDATION",
             "conditions": [
-                "stdev(history, 5, 'close') < (candle.getATR() * 1.0)"
+                "stdev(history, 5, 'close') < (candle.atr * 1.0)"
             ],
             "capture": {
                 "range_max": "highest(history, 5, 'high')"
-            }
+            },
+            "timeout": 0
         },
         {
             "id": "TRIGGER",
             "conditions": [
-                "candle.getClose() > vars.range_max",
-                "candle.getVolume() > prev_candle.getVolume()"
-            ]
+                "close > vars.range_max",
+                "volume > prev_candle.volume"
+            ],
+            "timeout": 0,
+            "capture": {}
         }
     ],
     "execution": {
         "side": "BUY",
-        "entry": "candle.getClose()",
-        "sl": "candle.getLow()",
+        "entry": "close",
+        "sl": "low",
         "tp": "entry + ( (entry - sl) * 2.0 )",
         "option_selection": "OTM_CALL_1"
     }

@@ -30,7 +30,8 @@
             "capture": {
                 "ema20": "moving_avg(history, 20, 'close')",
                 "vol_avg": "moving_avg(history, 20, 'volume')"
-            }
+            },
+            "timeout": 0
         },
         {
             "id": "TRIGGER",
@@ -39,7 +40,8 @@
                 "volume > vars.vol_avg * 1.2",
                 "close > open"
             ],
-            "capture": {}
+            "capture": {},
+            "timeout": 0
         }
     ],
     "execution": {
