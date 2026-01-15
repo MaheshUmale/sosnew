@@ -1,0 +1,52 @@
+{
+    "pattern_id": "INDEX_BREAKOUT_LONG",
+    "regime_config": {
+        "SIDEWAYS": {
+            "allow_entry": true,
+            "quantity_mod": 1.0,
+            "tp_mult": 2.0,
+            "buffer_atr": 0.5
+        },
+        "BULLISH": {
+            "allow_entry": true,
+            "quantity_mod": 1.5,
+            "tp_mult": 2.5,
+            "buffer_atr": 0.5
+        },
+        "BEARISH": {
+            "allow_entry": false,
+            "quantity_mod": 1.0,
+            "tp_mult": 1.0,
+            "buffer_atr": 0.5
+        }
+    },
+    "phases": [
+        {
+            "id": "SETUP",
+            "conditions": [
+                "close > moving_avg(history, 20, 'close')",
+                "volume > moving_avg(history, 20, 'volume')"
+            ],
+            "capture": {
+                "ema20": "moving_avg(history, 20, 'close')",
+                "vol_avg": "moving_avg(history, 20, 'volume')"
+            }
+        },
+        {
+            "id": "TRIGGER",
+            "conditions": [
+                "close > vars.ema20",
+                "volume > vars.vol_avg * 1.2",
+                "close > open"
+            ],
+            "capture": {}
+        }
+    ],
+    "execution": {
+        "side": "BUY",
+        "entry": "close",
+        "sl": "low - (close - low) * 0.5",
+        "tp": "close + ( (close - sl) * 2.0 )",
+        "option_selection": "ATM_CALL"
+    }
+}

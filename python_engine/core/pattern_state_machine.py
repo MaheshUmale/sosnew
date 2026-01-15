@@ -109,3 +109,11 @@ class PatternStateMachine:
     @property
     def definition(self) -> PatternDefinition:
         return self._definition
+
+    @property
+    def history(self) -> List[VolumeBar]:
+        return self._history
+
+    @property
+    def prev_candle(self) -> Optional[VolumeBar]:
+        return self._prev_candle

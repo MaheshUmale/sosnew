@@ -32,8 +32,9 @@ class DataManager:
         return [atm_strike + i * strike_step for i in range(-5, 6)]
 
     def get_historical_candles(self, symbol, exchange='NSE', interval='1m', n_bars=100):
+        from engine_config import Config
         # Prioritize tvDatafeed for index data with volume
-        if "NIFTY" in symbol.upper():
+        if Config.get('use_tvdatafeed', False) and "NIFTY" in symbol.upper():
             from data_sourcing.tvdatafeed.main import Interval
             interval_map = {'1m': Interval.in_1_minute}
             data = self.tv_client.get_historical_data(symbol, exchange, interval_map.get(interval, Interval.in_1_minute), n_bars)

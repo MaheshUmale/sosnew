@@ -3,12 +3,15 @@ from asteval import Interpreter
 from python_engine.models.data_models import PatternState, PatternDefinition, MarketEvent
 from python_engine.models.trade import Position, Trade, TradeSide, TradeOutcome
 from python_engine.core.trade_logger import TradeLog
+from python_engine.utils.dot_dict import DotDict
+from python_engine.utils.mvel_functions import MVEL_FUNCTIONS
+
 
 class OrderOrchestrator:
     def __init__(self, trade_log: TradeLog):
         self._trade_log = trade_log
         self._open_positions = {}
-        self._asteval = Interpreter()
+        self._asteval = Interpreter(symtable=MVEL_FUNCTIONS)
 
     def on_event(self, event: MarketEvent):
         if event.symbol not in self._open_positions:
@@ -36,17 +39,29 @@ class OrderOrchestrator:
         if trade_closed:
             del self._open_positions[event.symbol]
 
-    def execute_trade(self, state: PatternState, definition: PatternDefinition, candle):
+    def execute_trade(self, state: PatternState, definition: PatternDefinition, candle, history, prev_candle):
         if state.symbol in self._open_positions:
             # Simple logic: don't open a new position if one is already open for this symbol
             return
 
         # Evaluate expressions
         self._asteval.symtable['candle'] = candle
-        self._asteval.symtable['vars'] = state.captured_variables
+        self._asteval.symtable['vars'] = DotDict(state.captured_variables)
+        self._asteval.symtable['history'] = history
+        self._asteval.symtable['prev_candle'] = prev_candle or candle
+        self._asteval.symtable['close'] = candle.close
+        self._asteval.symtable['high'] = candle.high
+        self._asteval.symtable['low'] = candle.low
+        self._asteval.symtable['open'] = candle.open
 
+        # Evaluate entry and sl first
         entry_price = self._asteval.eval(definition.execution.entry)
         stop_loss = self._asteval.eval(definition.execution.sl)
+
+        # Add them to the context for tp evaluation
+        self._asteval.symtable['entry'] = entry_price
+        self._asteval.symtable['sl'] = stop_loss
+
         take_profit = self._asteval.eval(definition.execution.tp)
 
         side = TradeSide(definition.execution.side.upper())

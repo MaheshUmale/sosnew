@@ -1,3 +1,5 @@
 {
-    "strategies_dir": "strategies"
+    "strategies_dir": "strategies",
+    "upstox_access_token": "eyJ0eXAiOiJKV1QiLCJrZXlfaWQiOiJza192MS4wIiwiYWxnIjoiSFMyNTYifQ.eyJzdWIiOiI3NkFGMzUiLCJqdGkiOiI2OTY4NWQzMGM0ODQ0NDBlZDhiOWJhN2YiLCJpc011bHRpQ2xpZW50IjpmYWxzZSwiaXNQbHVzUGxhbiI6ZmFsc2UsImlhdCI6MTc2ODQ0NzI4MCwiaXNzIjoidWRhcGktZ2F0ZXdheS1zZXJ2aWNlIiwiZXhwIjoxNzY4NTE0NDAwfQ.KlZLvFtxWl5gKc_4RwNStR2RVegU1NfSJIz1vIcDU0U",
+    "use_tvdatafeed": false
 }

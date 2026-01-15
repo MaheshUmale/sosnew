@@ -2,3 +2,6 @@ asteval
 pandas
 tradingview_screener
 git+https://github.com/upstox/upstox-python.git
+websocket-client
+requests
+upstox-python-sdk @ git+https://github.com/upstox/upstox-python.git
