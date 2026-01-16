@@ -37,8 +37,13 @@ class InstrumentLoader:
             unique_strikes = sorted(near_opt_df['strike_price'].unique())
 
             # Find ATM strike
-            atm_strike = min(unique_strikes, key=lambda x: abs(x - spot))
-            atm_index = unique_strikes.index(atm_strike)
+            if spot is None or spot <= 0:
+                # If spot is unknown, pick the middle strike as a placeholder
+                atm_index = len(unique_strikes) // 2
+                atm_strike = unique_strikes[atm_index]
+            else:
+                atm_strike = min(unique_strikes, key=lambda x: abs(x - spot))
+                atm_index = unique_strikes.index(atm_strike)
 
             # Slice range: Index - 3 to Index + 3 (Total 7 strikes)
             start_idx = max(0, atm_index - 3)
