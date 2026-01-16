@@ -29,9 +29,16 @@ class UpstoxClient:
         history_api = upstox_client.HistoryV3Api(self.api_client)
 
         # More robust interval mapping
-        if 'm' in interval:
+        # If interval is already '1minute', '5minute' etc (from DataManager mapping)
+        if 'minute' in interval:
+            unit = 'minutes'
+            value = interval.replace('minute', '')
+        elif 'm' in interval:
             unit = 'minutes'
             value = interval.replace('m', '')
+        elif 'day' in interval:
+            unit = 'day'
+            value = '1'
         elif 'd' in interval:
             unit = 'day'
             value = interval.replace('d', '')
@@ -47,15 +54,19 @@ class UpstoxClient:
                 to_date=to_date,
                 from_date=from_date
             )
-        except upstox_client.ApiException as e:
-            print(f"[UpstoxClient] API Error in get_historical_candle_data: {e.body}")
+        except Exception as e:
+            print(f"[UpstoxClient] API Error in get_historical_candle_data: {e}")
             return None
 
     def get_intra_day_candle_data(self, instrument_key, interval):
         if not self.api_client: return None
-        history_api = upstox_client.HistoryV3Api(self.api_client)
+        import upstox_client as upstox_sdk
+        history_api = upstox_sdk.HistoryV3Api(self.api_client)
 
-        if 'm' in interval:
+        if 'minute' in interval:
+            unit = 'minutes'
+            value = interval.replace('minute', '')
+        elif 'm' in interval:
             unit = 'minutes'
             value = interval.replace('m', '')
         else: # Default to 1 minute for intraday
@@ -68,8 +79,8 @@ class UpstoxClient:
                 unit=unit,
                 interval=value
             )
-        except upstox_client.ApiException as e:
-            print(f"[UpstoxClient] API Error in get_intra_day_candle_data: {e.body}")
+        except Exception as e:
+            print(f"[UpstoxClient] API Error in get_intra_day_candle_data: {e}")
             return None
 
     def get_market_data_feed_authorize(self):
@@ -91,9 +102,10 @@ class UpstoxClient:
         instrument_keys can be a single string or a comma-separated string of keys.
         """
         if not self.api_client: return None
+        import upstox_client as upstox_sdk
         try:
-            api_instance = upstox_client.MarketQuoteV3Api(self.api_client)
+            api_instance = upstox_sdk.MarketQuoteV3Api(self.api_client)
             return api_instance.get_ltp(instrument_key=instrument_keys)
-        except upstox_client.ApiException as e:
-            print(f"[UpstoxClient] API Error in get_ltp: {e.body}")
+        except Exception as e:
+            print(f"[UpstoxClient] API Error in get_ltp: {e}")
             return None

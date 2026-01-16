@@ -75,6 +75,21 @@ class DatabaseManager:
             )
         ''', commit=True)
 
+        # Create market_stats table for enriched data
+        self._execute_query('''
+            CREATE TABLE IF NOT EXISTS market_stats (
+                symbol TEXT,
+                timestamp DATETIME,
+                pcr REAL,
+                pcr_velocity REAL,
+                advances INTEGER,
+                declines INTEGER,
+                oi_wall_above REAL,
+                oi_wall_below REAL,
+                PRIMARY KEY (symbol, timestamp)
+            )
+        ''', commit=True)
+
         # Create trades table
         self._execute_query('''
             CREATE TABLE IF NOT EXISTS trades (
@@ -244,3 +259,49 @@ class DatabaseManager:
             cursor = db.conn.cursor()
             cursor.execute("SELECT holiday_date FROM holidays")
             return [row[0] for row in cursor.fetchall()]
+
+    def store_market_stats(self, symbol, stats_df):
+        """
+        Stores enriched market statistics in the database.
+        """
+        with self as db:
+            df_to_insert = stats_df.copy()
+            df_to_insert['symbol'] = symbol
+
+            # Ensure timestamp format
+            if 'timestamp' in df_to_insert.columns:
+                df_to_insert['timestamp'] = pd.to_datetime(df_to_insert['timestamp']).dt.strftime('%Y-%m-%d %H:%M:%S')
+
+            try:
+                df_to_insert.to_sql('temp_market_stats', db.conn, if_exists='replace', index=False)
+
+                cols = ['symbol', 'timestamp', 'pcr', 'pcr_velocity', 'advances', 'declines', 'oi_wall_above', 'oi_wall_below']
+                # filter columns that exist in df
+                actual_cols = [c for c in cols if c in df_to_insert.columns]
+
+                merge_query = f"""
+                    INSERT OR REPLACE INTO market_stats ({', '.join(actual_cols)})
+                    SELECT {', '.join(actual_cols)} FROM temp_market_stats
+                """
+                db.conn.execute(merge_query)
+                db.conn.commit()
+            except Exception as e:
+                print(f"Error storing market stats for {symbol}: {e}")
+                db.conn.rollback()
+            finally:
+                db.conn.execute("DROP TABLE IF EXISTS temp_market_stats")
+
+    def get_market_stats(self, symbol, from_date, to_date):
+        """
+        Retrieves market statistics for a given symbol and date range.
+        """
+        start_date_str = pd.to_datetime(from_date).strftime('%Y-%m-%d 00:00:00')
+        end_date_str = pd.to_datetime(to_date).strftime('%Y-%m-%d 23:59:59')
+
+        with self as db:
+            query = """
+                SELECT * FROM market_stats
+                WHERE symbol = ? AND timestamp BETWEEN ? AND ?
+                ORDER BY timestamp ASC
+            """
+            return pd.read_sql_query(query, db.conn, params=(symbol, start_date_str, end_date_str))
