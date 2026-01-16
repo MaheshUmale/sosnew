@@ -21,7 +21,6 @@ from SymbolMaster import MASTER as SymbolMaster
 
 # --- Global State for Streamer ---
 streamer = None
-subscribed_instruments = set()
 
 class LiveTradingEngine:
     def __init__(self, loop):
@@ -39,12 +38,13 @@ class LiveTradingEngine:
             'NSE_INDEX|Nifty 50',
             'NSE_INDEX|Nifty Bank',
         }
+        self.subscribed_instruments = set()
 
-        fno_instruments = self.data_manager.load_and_cache_fno_instruments()
-        option_symbols_to_subscribe = []
-        for symbol, data in fno_instruments.items():
-            option_symbols_to_subscribe.extend(data['all_keys'])
+        self._fno_loaded = False
+        self._load_instruments()
 
+    def _load_instruments(self):
+        """Initial instrument loading. Indices are always loaded. Options are loaded if spot is available."""
         # Subscribe using proper instrument keys
         instrument_keys_to_subscribe = []
         for s in self.symbols:
@@ -52,8 +52,18 @@ class LiveTradingEngine:
             if key:
                 instrument_keys_to_subscribe.append(key)
 
-        subscribed_instruments.update(instrument_keys_to_subscribe)
-        subscribed_instruments.update(option_symbols_to_subscribe)
+        self.subscribed_instruments.update(instrument_keys_to_subscribe)
+
+        try:
+            fno_instruments = self.data_manager.load_and_cache_fno_instruments()
+            if fno_instruments:
+                option_symbols_to_subscribe = []
+                for symbol, data in fno_instruments.items():
+                    option_symbols_to_subscribe.extend(data['all_keys'])
+                self.subscribed_instruments.update(option_symbols_to_subscribe)
+                self._fno_loaded = True
+        except Exception as e:
+            print(f"[LiveTradingEngine] Initial FNO load deferred: {e}")
 
     def on_message(self, message):
         """Thread-safe callback to schedule message processing on the main event loop."""
@@ -61,6 +71,7 @@ class LiveTradingEngine:
 
     async def process_message(self, data):
         """Asynchronously processes the market data."""
+        global streamer
         if 'feeds' in data:
             for symbol_key, feed in data['feeds'].items():
                 market_ohlc_list = feed.get('ff', {}).get('marketFF', {}).get('marketOHLC', {}).get('ohlc', [])
@@ -71,6 +82,21 @@ class LiveTradingEngine:
                         break
 
                 if one_min_candle:
+                    ticker = SymbolMaster.get_ticker_from_key(symbol_key)
+
+                    # If FNO instruments were not loaded (due to missing spot price), try loading them now
+                    if not self._fno_loaded and ticker in ["NSE|INDEX|NIFTY", "NSE|INDEX|BANKNIFTY"]:
+                        print(f"Index data received for {ticker}, attempting to load FNO instruments...")
+                        self._load_instruments()
+                        if self._fno_loaded and streamer:
+                            # Update subscription on the existing connection
+                            try:
+                                instruments = list(self.subscribed_instruments)
+                                print(f"Updating subscription with {len(instruments)} instruments...")
+                                streamer.subscribe(instruments, "full")
+                            except Exception as e:
+                                print(f"Failed to update subscription: {e}")
+
                     candle_timestamp = datetime.fromtimestamp(int(one_min_candle['ts']) / 1000)
                     # Create a DataFrame for the new candle data
                     candle_df = pd.DataFrame([{
@@ -84,7 +110,6 @@ class LiveTradingEngine:
                     }])
 
                     # Store the candle data in the database
-                    ticker = SymbolMaster.get_ticker_from_key(symbol_key)
                     exchange = Config.get('live_data_exchange', 'NSE')
                     interval = Config.get('live_data_interval', '1m')
                     self.data_manager.db_manager.store_historical_candles(ticker, exchange, interval, candle_df)
@@ -92,9 +117,9 @@ class LiveTradingEngine:
                     event = MarketEvent(
                         type=MessageType.MARKET_UPDATE,
                         timestamp=datetime.now().timestamp(),
-                        symbol=symbol_key,
+                        symbol=ticker,
                         candle=VolumeBar(
-                            symbol=symbol_key,
+                            symbol=ticker,
                             timestamp=candle_timestamp.timestamp(),
                             open=one_min_candle['open'],
                             high=one_min_candle['high'],
@@ -112,7 +137,7 @@ class LiveTradingEngine:
         global streamer
         print("Streamer connection opened.")
         try:
-            instruments = list(subscribed_instruments)
+            instruments = list(self.subscribed_instruments)
             print(f"Sending On OPEN  subscription for {len(instruments)} instruments...{datetime.now()}")
             streamer.subscribe(instruments, "full")
         except Exception as e:
@@ -133,13 +158,17 @@ class LiveTradingEngine:
         def run_streamer():
             global streamer
             print(f"Starting UPSTOX SDK Streamer with {len(self.symbols)} instruments...")
-            print(f"Subscribed Instruments: {subscribed_instruments}")
+
+            # Map raw keys back to readable tickers for logging
+            readable_subscriptions = [SymbolMaster.get_ticker_from_key(k) for k in self.subscribed_instruments]
+            print(f"Subscribed Instruments: {readable_subscriptions}")
+
             configuration = upstox_client.Configuration()
             configuration.access_token = self.access_token
 
             try:
                 api_client = upstox_client.ApiClient(configuration)
-                streamer = MarketDataStreamerV3(api_client, list(subscribed_instruments), "full")
+                streamer = MarketDataStreamerV3(api_client, list(self.subscribed_instruments), "full")
 
                 streamer.on("message", self.on_message)
                 streamer.on("open", self.on_open)
@@ -154,7 +183,7 @@ class LiveTradingEngine:
                     while True:
                         time.sleep(50)
                         try:
-                            instruments = list(subscribed_instruments)
+                            instruments = list(self.subscribed_instruments)
                             print(f"Sending periodic subscription for {len(instruments)} instruments...{datetime.now()}")
                             streamer_ref.subscribe(instruments, "full")
                         except Exception as e:
