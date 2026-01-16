@@ -63,7 +63,7 @@ class DataManager:
         print(f"Fetching historical candles for {canonical_symbol} from remote source...")
         data_to_store = None
         if Config.get('use_tvdatafeed', False) and "NIFTY" in canonical_symbol.upper():
-            from data_sourcing.tvdatafeed.main import Interval
+            from TVDataFeed import Interval
             interval_map = {'1m': Interval.in_1_minute}
             data = self.tv_client.get_historical_data(canonical_symbol, exchange, interval_map.get(interval, Interval.in_1_minute), n_bars)
             if data is not None and not data.empty:

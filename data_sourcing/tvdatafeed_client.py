@@ -1,4 +1,4 @@
-from data_sourcing.tvdatafeed.main import TvDatafeed, Interval
+from TVDataFeed  import TvDatafeed, Interval
 
 class TVDatafeedClient:
     def __init__(self, username=None, password=None):
