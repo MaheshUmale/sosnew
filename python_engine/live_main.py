@@ -72,6 +72,19 @@ class LiveTradingEngine:
     async def process_message(self, data):
         """Asynchronously processes the market data."""
         global streamer
+
+        # Periodically fetch option chain data to populate the DB
+        # This ensures strategy evaluation has access to PCR/OI data
+        now = datetime.now()
+        if not hasattr(self, '_last_chain_fetch') or (now - self._last_chain_fetch).total_seconds() > 300: # Every 5 mins
+            for symbol in ["NIFTY", "BANKNIFTY"]:
+                try:
+                    print(f"[LiveTradingEngine] Fetching fresh option chain for {symbol}...")
+                    self.data_manager.get_option_chain(symbol)
+                    self._last_chain_fetch = now
+                except Exception as e:
+                    print(f"[LiveTradingEngine] Failed to fetch option chain for {symbol}: {e}")
+
         if 'feeds' in data:
             for symbol_key, feed in data['feeds'].items():
                 market_ohlc_list = feed.get('ff', {}).get('marketFF', {}).get('marketOHLC', {}).get('ohlc', [])
@@ -83,6 +96,8 @@ class LiveTradingEngine:
 
                 if one_min_candle:
                     ticker = SymbolMaster.get_ticker_from_key(symbol_key)
+                    # Use ticker for debugging instead of raw key
+                    print(f"[DEBUG] Received data for {ticker} at {one_min_candle.get('ts')}")
 
                     # If FNO instruments were not loaded (due to missing spot price), try loading them now
                     if not self._fno_loaded and ticker in ["NSE|INDEX|NIFTY", "NSE|INDEX|BANKNIFTY"]:
@@ -128,6 +143,7 @@ class LiveTradingEngine:
                             volume=int(one_min_candle['vol'])
                         )
                     )
+                    print(f"[DEBUG] Dispatching event for {ticker}: {event.candle.close}")
                     self.option_chain_handler.on_event(event)
                     self.sentiment_handler.on_event(event)
                     self.pattern_matcher_handler.on_event(event)

@@ -129,6 +129,7 @@ class DatabaseManager:
             query = """
                 SELECT * FROM historical_candles
                 WHERE symbol = ? AND exchange = ? AND interval = ? AND timestamp BETWEEN ? AND ?
+                ORDER BY timestamp DESC
             """
             return pd.read_sql_query(query, db.conn, params=(instrument_key, exchange, interval, start_date_str, end_date_str))
 
@@ -137,28 +138,21 @@ class DatabaseManager:
             target_date = datetime.strptime(date, '%Y-%m-%d') if date else datetime.now()
             date_str = target_date.strftime('%Y-%m-%d')
 
-            # Start a transaction
-            cursor = db.conn.cursor()
-            cursor.execute('BEGIN TRANSACTION')
-
             try:
                 # Delete old option chain data for the target day
-                delete_query = "DELETE FROM option_chain_data WHERE symbol = ? AND DATE(timestamp) = ?"
-                cursor.execute(delete_query, (symbol, date_str))
+                delete_query = "DELETE FROM option_chain_data WHERE symbol = ? AND (timestamp LIKE ? OR timestamp LIKE ?)"
+                db.conn.execute(delete_query, (symbol, f"{date_str}%", f"{date_str}%"))
 
                 # Insert new data
                 df_to_insert = option_chain_df.copy()
                 df_to_insert['symbol'] = symbol
-                # Use the target date for the timestamp, preserving the time if it exists, or setting it to a default time
-                df_to_insert['timestamp'] = target_date.replace(hour=15, minute=30, second=0, microsecond=0)
+                # Use the target date for the timestamp
+                df_to_insert['timestamp'] = target_date.strftime('%Y-%m-%d %H:%M:%S')
 
+                print(f"[DatabaseManager] Inserting {len(df_to_insert)} rows into option_chain_data for {symbol}")
                 df_to_insert.to_sql('option_chain_data', db.conn, if_exists='append', index=False)
-
-                # Commit the transaction
                 db.conn.commit()
             except Exception as e:
-                # Rollback the transaction if an error occurs
-                db.conn.rollback()
                 print(f"Error storing option chain for {symbol}: {e}")
 
     def get_option_chain(self, symbol, for_date):

@@ -73,6 +73,14 @@ This script will check all the `.json` files in the `strategies` directory again
     ```
     The engine will connect to the Upstox WebSocket feed and process live market data.
 
+### Symbol Mapping and Instrument Resolution
+
+The engine uses a centralized `SymbolMaster` to handle the conversion between human-readable tickers (e.g., `NSE|INDEX|NIFTY`) and Upstox-specific instrument keys.
+
+- **Canonical Format:** The internal system uses `NSE|INDEX|NIFTY` and `NSE|INDEX|BANKNIFTY`.
+- **Live Data Mapping:** In live mode, incoming numeric instrument keys from Upstox are automatically mapped back to these canonical tickers to ensure consistency with strategy evaluation and database storage.
+- **Dynamic F&O Subscription:** For index trading, the system automatically resolves and subscribes to the relevant ATM/OTM/ITM Call and Put options based on the current spot price of the underlying index.
+
 ## Validating Strategies
 
 To ensure that your strategy files are correctly formatted and will not cause errors, you can use the `validate_strategies.py` script. This script will check your strategy files against a schema and validate the syntax of the expressions.
