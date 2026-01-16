@@ -17,7 +17,7 @@ def main():
     SymbolMaster.initialize()
 
     if args.mode == 'backtest':
-        symbol = "NSE_INDEX|Nifty 50" if args.symbol == "NIFTY" else args.symbol
+        symbol = "NSE|INDEX|NIFTY" if args.symbol == "NIFTY" else ("NSE|INDEX|BANKNIFTY" if args.symbol == "BANKNIFTY" else args.symbol)
         if not symbol:
             parser.error("--symbol is required for backtest mode.")
         run_backtest(symbol, args.from_date, args.to_date)

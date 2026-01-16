@@ -148,9 +148,17 @@ class SymbolMaster:
         if not self._initialized:
             self.initialize()
 
+        # 0. If it's already an instrument key, return it
+        if symbol in self._reverse_mappings:
+            return symbol
+
         # 1. Handle unified format
         s_upper = symbol.upper()
         if s_upper.startswith("NSE|INDEX|"):
+            s_upper = s_upper.split('|')[-1]
+
+        # 1.1 Handle alternate index prefix format
+        if s_upper.startswith("NSE_INDEX|"):
             s_upper = s_upper.split('|')[-1]
 
         # 2. Direct Match
@@ -158,6 +166,16 @@ class SymbolMaster:
             return self._mappings[s_upper]
 
         return None
+
+    def get_canonical_ticker(self, symbol):
+        """
+        Returns a consistent canonical ticker for any given symbol or instrument key.
+        Indices are returned as NSE|INDEX|NIFTY, Options as their trading symbol.
+        """
+        key = self.get_upstox_key(symbol)
+        if not key:
+            return symbol
+        return self.get_ticker_from_key(key)
 
     def get_ticker_from_key(self, key):
         """

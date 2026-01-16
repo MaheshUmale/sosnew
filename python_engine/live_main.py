@@ -36,8 +36,8 @@ class LiveTradingEngine:
 
         self.access_token = Config.get('upstox_access_token')
         self.symbols = {
-            'NSE_INDEX|Nifty 50',
-            'NSE_INDEX|Nifty Bank',
+            'NSE|INDEX|NIFTY',
+            'NSE|INDEX|BANKNIFTY',
         }
 
         fno_instruments = self.data_manager.load_and_cache_fno_instruments()
@@ -45,7 +45,14 @@ class LiveTradingEngine:
         for symbol, data in fno_instruments.items():
             option_symbols_to_subscribe.extend(data['all_keys'])
 
-        subscribed_instruments.update(self.symbols)
+        # Subscribe using proper instrument keys
+        instrument_keys_to_subscribe = []
+        for s in self.symbols:
+            key = SymbolMaster.get_upstox_key(s)
+            if key:
+                instrument_keys_to_subscribe.append(key)
+
+        subscribed_instruments.update(instrument_keys_to_subscribe)
         subscribed_instruments.update(option_symbols_to_subscribe)
 
     def on_message(self, message):
