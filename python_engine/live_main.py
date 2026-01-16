@@ -36,8 +36,8 @@ class LiveTradingEngine:
 
         self.access_token = Config.get('upstox_access_token')
         self.symbols = {
-            'NSE|INDEX|NIFTY',
-            'NSE|INDEX|BANKNIFTY',
+            'NSE_INDEX|Nifty 50',
+            'NSE_INDEX|Nifty Bank',
         }
 
         fno_instruments = self.data_manager.load_and_cache_fno_instruments()

@@ -196,9 +196,9 @@ class SymbolMaster:
         if key in self._reverse_mappings:
             name, segment = self._reverse_mappings[key]
             if segment == 'NSE_INDEX':
-                if name == "Nifty 50":
+                if name == "NIFTY":
                     return "NSE|INDEX|NIFTY"
-                if name == "NIFTY BANK":
+                if name == "BANKNIFTY":
                     return "NSE|INDEX|BANKNIFTY"
             return name
 
