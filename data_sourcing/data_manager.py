@@ -47,29 +47,32 @@ class DataManager:
         if from_date is None:
             from_date = to_date - timedelta(days=5)
 
+        # Canonicalize symbol for consistent DB storage and lookup
+        canonical_symbol = SymbolMaster.get_canonical_ticker(symbol)
+
         # First, try to get data from the local database
-        local_data = self.db_manager.get_historical_candles(symbol, exchange, interval, from_date, to_date)
+        local_data = self.db_manager.get_historical_candles(canonical_symbol, exchange, interval, from_date, to_date)
         if local_data is not None and not local_data.empty:
-            print(f"Loaded {len(local_data)} candles for {symbol} from local DB.")
+            print(f"Loaded {len(local_data)} candles for {canonical_symbol} from local DB.")
             if from_date:
                 return local_data
             if len(local_data) >= n_bars:
                 return local_data.tail(n_bars)
 
         # If not in DB or not enough data, fetch from external sources
-        print(f"Fetching historical candles for {symbol} from remote source...")
+        print(f"Fetching historical candles for {canonical_symbol} from remote source...")
         data_to_store = None
-        if Config.get('use_tvdatafeed', False) and "NIFTY" in symbol.upper():
+        if Config.get('use_tvdatafeed', False) and "NIFTY" in canonical_symbol.upper():
             from data_sourcing.tvdatafeed.main import Interval
             interval_map = {'1m': Interval.in_1_minute}
-            data = self.tv_client.get_historical_data(symbol, exchange, interval_map.get(interval, Interval.in_1_minute), n_bars)
+            data = self.tv_client.get_historical_data(canonical_symbol, exchange, interval_map.get(interval, Interval.in_1_minute), n_bars)
             if data is not None and not data.empty:
                 data.reset_index(inplace=True)
                 data.rename(columns={'datetime': 'timestamp'}, inplace=True)
                 data_to_store = data
         else:
             try:
-                instrument_key = SymbolMaster.get_upstox_key(symbol)
+                instrument_key = SymbolMaster.get_upstox_key(canonical_symbol)
                 if instrument_key:
                     today = datetime.now().date()
                     if to_date.date() < today:
@@ -85,8 +88,8 @@ class DataManager:
                 print(f"[DataManager] Upstox historical data failed for {symbol}: {e}")
 
         if data_to_store is not None and not data_to_store.empty:
-            self.db_manager.store_historical_candles(symbol, exchange, interval, data_to_store)
-            print(f"Stored {len(data_to_store)} candles for {symbol} in local DB.")
+            self.db_manager.store_historical_candles(canonical_symbol, exchange, interval, data_to_store)
+            print(f"Stored {len(data_to_store)} candles for {canonical_symbol} in local DB.")
             return data_to_store.tail(n_bars)
 
         return None
@@ -182,8 +185,8 @@ class DataManager:
         return 0.5
 
     def load_and_cache_fno_instruments(self):
-        nifty_spot = self.get_last_traded_price('NSE_INDEX|Nifty 50')
-        banknifty_spot = self.get_last_traded_price('NSE_INDEX|Nifty Bank')
+        nifty_spot = self.get_last_traded_price('NSE|INDEX|NIFTY')
+        banknifty_spot = self.get_last_traded_price('NSE|INDEX|BANKNIFTY')
 
         current_spots = {
             "NIFTY": nifty_spot,
@@ -198,7 +201,7 @@ class DataManager:
         if not instrument_data:
             return None, None
 
-        full_symbol = "NSE_INDEX|Nifty 50" if symbol == "NIFTY" else "NSE_INDEX|Nifty Bank"
+        full_symbol = "NSE|INDEX|NIFTY" if symbol == "NIFTY" else "NSE|INDEX|BANKNIFTY"
         spot_price = self.get_last_traded_price(full_symbol)
         atm_strike = min(instrument_data['options'], key=lambda x: abs(x['strike'] - spot_price))
 

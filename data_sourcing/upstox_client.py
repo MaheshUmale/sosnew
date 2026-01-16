@@ -11,6 +11,10 @@ class UpstoxClient:
     def __init__(self, access_token=None):
         self.api_client = None
         if UPSTOX_AVAILABLE:
+            if not access_token:
+                from engine_config import Config
+                access_token = Config.get('upstox_access_token')
+
             if access_token:
                 self.configuration = upstox_client.Configuration()
                 self.configuration.access_token = access_token
@@ -26,13 +30,13 @@ class UpstoxClient:
 
         # More robust interval mapping
         if 'm' in interval:
-            unit = 'minute'
+            unit = 'minutes'
             value = interval.replace('m', '')
         elif 'd' in interval:
             unit = 'day'
             value = interval.replace('d', '')
         else:
-            unit = 'minute'
+            unit = 'minutes'
             value = '1'
 
         try:
@@ -52,10 +56,10 @@ class UpstoxClient:
         history_api = upstox_client.HistoryV3Api(self.api_client)
 
         if 'm' in interval:
-            unit = 'minute'
+            unit = 'minutes'
             value = interval.replace('m', '')
         else: # Default to 1 minute for intraday
-            unit = 'minute'
+            unit = 'minutes'
             value = '1'
 
         try:

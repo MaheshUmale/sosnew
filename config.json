@@ -1,7 +1,7 @@
 {
     "strategies_dir": "strategies",
     "use_tvdatafeed": true,
-    "upstox_access_token": "eyJ0eXAiOiJKV1QiLCJrZXlfaWQiOiJza192MS4wIiwiYWxnIjoiSFMyNTYifQ.eyJzdWIiOiI3NkFGMzUiLCJqdGkiOiI2OTY4NWQzMGM0ODQ0NDBlZDhiOWJhN2YiLCJpc011bHRpQ2xpZW50IjpmYWxzZSwiaXNQbHVzUGxhbiI6ZmFsc2UsImlhdCI6MTc2ODQ0NzI4MCwiaXNzIjoidWRhcGktZ2F0ZXdheS1zZXJ2aWNlIiwiZXhwIjoxNzY4NTE0NDAwfQ.KlZLvFtxWl5gKc_4RwNStR2RVegU1NfSJIz1vIcDU0U",
+    "upstox_access_token": "eyJ0eXAiOiJKV1QiLCJrZXlfaWQiOiJza192MS4wIiwiYWxnIjoiSFMyNTYifQ.eyJzdWIiOiI3NkFGMzUiLCJqdGkiOiI2OTY5YjJkYTNkODJjNDc2OGI2OGI3ODgiLCJpc011bHRpQ2xpZW50IjpmYWxzZSwiaXNQbHVzUGxhbiI6ZmFsc2UsImlhdCI6MTc2ODUzNDc0NiwiaXNzIjoidWRhcGktZ2F0ZXdheS1zZXJ2aWNlIiwiZXhwIjoxNzY4NjAwODAwfQ.Q1eMVJoK4BF4vIWXKrkfQ3GGUcAs_OQVkQJpKDF4UK0",
     "live_data_exchange": "NSE",
     "live_data_interval": "1m"
 }
