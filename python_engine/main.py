@@ -67,7 +67,7 @@ def run_backtest(symbol: str, from_date: str = None, to_date: str = None):
                 atr=row['atr']
             ),
             option_chain=option_chain,
-            sentiment=Sentiment(pcr=pcr, advances=market_breadth.get('advances', 0) if market_breadth else 0, declines=market_breadth.get('declines', 0) if market_breadth else 0) if pcr else None
+            sentiment=data_manager.get_current_sentiment(symbol, timestamp=timestamp, mode="backtest")
         )
 
 

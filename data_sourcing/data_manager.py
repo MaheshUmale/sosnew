@@ -493,11 +493,11 @@ class DataManager:
                 return pcr
             
         return 1.0
-    def get_current_sentiment(self, symbol, mode='backtest'):
+    def get_current_sentiment(self, symbol, timestamp=None, mode='backtest'):
         """
         Calculates and returns the current market sentiment for a given symbol.
         """
-        pcr_value = self.get_pcr(symbol, mode=mode)
+        pcr_value = self.get_pcr(symbol, timestamp=timestamp, mode=mode)
         
         # TODO: Implement actual advance/decline fetch logic
         # For now, default to neutral/balanced
