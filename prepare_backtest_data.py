@@ -25,41 +25,6 @@ def prepare_data(symbol, from_date, to_date):
     print(f"\nCaching underlying symbol data for {symbol}...")
     data_manager.get_historical_candles(symbol, from_date=from_date, to_date=to_date, n_bars=100000)
 
-    # 2. Iterate through each day to fetch option chain and option candle data
-    symbol_prefix = "BANKNIFTY" if "BANK" in symbol.upper() else "NIFTY"
-    for single_date in date_range:
-        day_str = single_date.strftime('%Y-%m-%d')
-        print(f"\nProcessing data for {day_str}...")
-
-        # a. Fetch and cache the option chain for the day.
-        print(f"Fetching option chain for {symbol_prefix} for {day_str}...")
-        option_chain = data_manager.get_option_chain(symbol_prefix, date=day_str)
-
-        if not option_chain:
-            print(f"Could not fetch option chain for {symbol_prefix} on {day_str}. It might be a holiday or weekend.")
-            continue
-
-        # b. Get the option chain from the DB to ensure we have the keys
-        db_option_chain_df = data_manager.db_manager.get_option_chain(symbol_prefix, day_str)
-        if db_option_chain_df is None or db_option_chain_df.empty:
-            print(f"No option chain data found in DB for {symbol_prefix} on {day_str} after fetching.")
-            continue
-
-        # c. Extract unique instrument keys and cache their candle data
-        call_keys = db_option_chain_df['call_instrument_key'].dropna().unique()
-        put_keys = db_option_chain_df['put_instrument_key'].dropna().unique()
-        all_option_keys = list(call_keys) + list(put_keys)
-
-        print(f"Found {len(all_option_keys)} unique option instruments for {day_str}. Caching candle data...")
-        for i, key in enumerate(all_option_keys):
-            print(f"  ({i+1}/{len(all_option_keys)}) Caching candles for {key}...")
-            # Fetch data for the specific day
-            data_manager.get_historical_candles(
-                symbol=key,
-                from_date=day_str,
-                to_date=day_str,
-                n_bars=1000 # More than enough for a single day
-            )
 
     print("\nData preparation complete.")
 
