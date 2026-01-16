@@ -5,15 +5,27 @@ class TrendlyneClient:
         self.base_url = "https://smartoptions.trendlyne.com/phoenix/api"
 
     def get_stock_id_for_symbol(self, symbol):
+        # Strip common prefixes
+        s = symbol.upper()
+        if '|' in s:
+            s = s.split('|')[-1]
+        
+        # Map indices to Trendlyne ticker codes
+        if "NIFTY 50" in s or s == "NIFTY":
+            s = "NIFTY"
+        elif "NIFTY BANK" in s or s == "BANKNIFTY":
+            s = "BANKNIFTY"
+            
         search_url = f"{self.base_url}/search-contract-stock/"
-        params = {'query': symbol.lower()}
+        params = {'query': s.lower()}
         try:
             response = requests.get(search_url, params=params, timeout=10)
             response.raise_for_status()
             data = response.json()
             if data and 'body' in data and 'data' in data['body'] and len(data['body']['data']) > 0:
                 for item in data['body']['data']:
-                    if item.get('stock_code', '').upper() == symbol.upper():
+                    target_code = item.get('stock_code', '').upper()
+                    if target_code == s:
                         return item['stock_id']
                 return data['body']['data'][0]['stock_id']
             return None

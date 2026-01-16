@@ -25,6 +25,20 @@ def prepare_data(symbol, from_date, to_date):
     print(f"\nCaching underlying symbol data for {symbol}...")
     data_manager.get_historical_candles(symbol, from_date=from_date, to_date=to_date, n_bars=100000)
 
+    # 2. Cache option chain data for each business day
+    holidays = data_manager.holidays
+    print(f"\nCaching option chain data for {symbol}...")
+    for target_date in date_range:
+        date_str = target_date.strftime('%Y-%m-%d')
+        if date_str in holidays:
+            print(f"  Skipping holiday: {date_str}")
+            continue
+        
+        print(f"  Syncing option chain for {date_str}...")
+        try:
+            data_manager.get_option_chain(symbol, date=date_str)
+        except Exception as e:
+            print(f"  [ERROR] Failed to sync option chain for {date_str}: {e}")
 
     print("\nData preparation complete.")
 

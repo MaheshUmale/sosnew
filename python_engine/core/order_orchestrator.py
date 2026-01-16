@@ -1,7 +1,7 @@
 import uuid
 from asteval import Interpreter
 from data_sourcing.data_manager import DataManager
-from python_engine.models.data_models import PatternState, PatternDefinition, MarketEvent
+from python_engine.models.data_models import PatternState, PatternDefinition, MarketEvent, VolumeBar
 from python_engine.models.trade import Position, Trade, TradeSide, TradeOutcome
 from python_engine.core.trade_logger import TradeLog
 from python_engine.utils.dot_dict import DotDict
@@ -17,39 +17,48 @@ class OrderOrchestrator:
         self._asteval = Interpreter(symtable=MVEL_FUNCTIONS)
 
     def on_event(self, event: MarketEvent):
-        # This event is for the underlying index. We need to check if we have any open option positions for it.
-        positions_to_check = [p for p in self._open_positions.values() if p.underlying_symbol == event.symbol]
+        # 1. If this event IS the instrument we have a position in (e.g. the Option itself)
+        if event.symbol in self._open_positions:
+            position = self._open_positions[event.symbol]
+            self._check_sl_tp(position, event.candle)
+            if position.trade_id not in [p.trade_id for p in self._open_positions.values()]:
+                # Position was closed
+                return
+
+        # 2. If this is the underlying index, check all positions deriving from it
+        # This is primarily for backtesting where we might only have underlying data events
+        # Or if we want to exit an option based on underlying technicals
+        positions_to_check = [p for p in self._open_positions.values() if p.underlying_symbol == event.symbol and p.symbol != event.symbol]
 
         for position in positions_to_check:
-            # For each open option position, get the option's candle for the current timestamp
+            # For these, we still need to fetch the option's specific candle
             option_candle = self._data_manager.get_historical_candle_for_timestamp(
-                symbol=position.instrument_key, # Use instrument_key for lookup
+                symbol=position.instrument_key,
                 timestamp=event.candle.timestamp
             )
 
-            if not option_candle:
-                # Can't get price data for the option at this time, so we can't check SL/TP.
-                # Let's print a warning and continue.
-                # print(f"Warning: Could not fetch option candle for {position.symbol} at timestamp {event.candle.timestamp}")
-                continue
+            if option_candle:
+                self._check_sl_tp(position, option_candle)
 
-            trade_closed = False
-            if position.side == TradeSide.BUY:
-                if option_candle.low <= position.stop_loss:
-                    self._close_position(position, option_candle.low, option_candle.timestamp, TradeOutcome.LOSS)
-                    trade_closed = True
-                elif option_candle.high >= position.take_profit:
-                    self._close_position(position, option_candle.high, option_candle.timestamp, TradeOutcome.WIN)
-                    trade_closed = True
-            elif position.side == TradeSide.SELL:
-                if option_candle.high >= position.stop_loss:
-                    self._close_position(position, option_candle.high, option_candle.timestamp, TradeOutcome.LOSS)
-                    trade_closed = True
-                elif option_candle.low <= position.take_profit:
-                    self._close_position(position, option_candle.low, option_candle.timestamp, TradeOutcome.WIN)
-                    trade_closed = True
+    def _check_sl_tp(self, position: Position, candle: VolumeBar):
+        trade_closed = False
+        if position.side == TradeSide.BUY:
+            if candle.low <= position.stop_loss:
+                self._close_position(position, position.stop_loss, candle.timestamp, TradeOutcome.LOSS)
+                trade_closed = True
+            elif candle.high >= position.take_profit:
+                self._close_position(position, position.take_profit, candle.timestamp, TradeOutcome.WIN)
+                trade_closed = True
+        elif position.side == TradeSide.SELL:
+            if candle.high >= position.stop_loss:
+                self._close_position(position, position.stop_loss, candle.timestamp, TradeOutcome.LOSS)
+                trade_closed = True
+            elif candle.low <= position.take_profit:
+                self._close_position(position, position.take_profit, candle.timestamp, TradeOutcome.WIN)
+                trade_closed = True
 
-            if trade_closed:
+        if trade_closed:
+            if position.symbol in self._open_positions:
                 del self._open_positions[position.symbol]
 
     def _get_atm_option_details(self, underlying_symbol, side, candle):
@@ -57,7 +66,7 @@ class OrderOrchestrator:
         symbol_prefix = "BANKNIFTY" if "BANK" in underlying_symbol.upper() else "NIFTY"
 
         if self._mode == 'live':
-            instrument_key, trading_symbol = self._data_manager.get_atm_option_details(symbol_prefix, side.value)
+            instrument_key, trading_symbol = self._data_manager.get_atm_option_details(symbol_prefix, side.value, spot_price=candle.close)
             if instrument_key and trading_symbol:
                 option_price = self._data_manager.get_last_traded_price(instrument_key)
                 return trading_symbol, option_price, instrument_key
@@ -75,6 +84,8 @@ class OrderOrchestrator:
                 )
                 if option_candle:
                     return trading_symbol, option_candle.close, instrument_key
+                else:
+                    print(f"[OrderOrchestrator] DEBUG: Option Candle is None for {trading_symbol} ({instrument_key}) at {candle.timestamp}")
 
         return None, None, None
 
@@ -114,7 +125,9 @@ class OrderOrchestrator:
         instrument_key_to_trade = symbol_to_trade # Default to the underlying
 
         if is_index:
+            print(f"[OrderOrchestrator] Resolving ATM option for {state.symbol} ({original_side})...")
             option_symbol, option_price, option_instrument_key = self._get_atm_option_details(state.symbol, original_side, candle)
+            print(f"[OrderOrchestrator] Result: Symbol={option_symbol}, Price={option_price}, Key={option_instrument_key}")
 
             if option_symbol and option_price and option_instrument_key:
                 # For a SELL signal on the index, we BUY a Put option.
@@ -130,6 +143,7 @@ class OrderOrchestrator:
                 delta = self._data_manager.get_option_delta(symbol_to_trade)
                 price_difference_sl = abs(spot_entry_price - spot_stop_loss)
                 price_difference_tp = abs(spot_take_profit - spot_entry_price)
+                print(f"[OrderOrchestrator] DEBUG: Spot Entry={spot_entry_price}, Spot SL={spot_stop_loss}, Spot TP={spot_take_profit}, Delta={delta}, PriceDiffTP={price_difference_tp}, ATR={candle.atr}")
 
                 # For BUY side (on Calls and Puts), SL is below and TP is above.
                 stop_loss = option_price - (price_difference_sl * delta)
@@ -138,7 +152,7 @@ class OrderOrchestrator:
                 entry_price = option_price
             else:
                 # If we can't get option details, we can't place the trade.
-                print(f"Could not get ATM option details for {state.symbol} at timestamp {candle.timestamp}. Skipping trade.")
+                print(f"[OrderOrchestrator] ERROR: Could not get ATM option details for {state.symbol} at timestamp {candle.timestamp}. Skipping trade.")
                 return
 
         if symbol_to_trade in self._open_positions:

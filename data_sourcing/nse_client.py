@@ -18,18 +18,31 @@ class NSEClient:
     def _init_session(self):
         if not self.session.cookies:
             try:
-                self.session.get(self.base_url, timeout=10)
+                # First hit homepage
+                self.session.get(self.base_url, timeout=15)
+                # Then hit a subpage to ensure cookies are fully set
+                self.session.get(f"{self.base_url}/market-data/live-equity-market", timeout=15)
             except Exception as e:
                 print(f"[NSE] Failed to initialize session: {e}")
 
     def _make_get_request(self, url, params=None):
-        time.sleep(0.5)
+        time.sleep(1.0) # Be more conservative with NSE
         try:
-            response = self.session.get(url, params=params, timeout=10)
+            response = self.session.get(url, params=params, timeout=15)
+            if response.status_code == 401 or response.status_code == 403:
+                print(f"[NSE] Session expired or blocked. Re-initializing...")
+                self.session.cookies.clear()
+                self._init_session()
+                response = self.session.get(url, params=params, timeout=15)
+            
             response.raise_for_status()
-            return response.json()
+            try:
+                return response.json()
+            except ValueError:
+                print(f"[NSE] Failed to decode JSON from {url}. Response started with: {response.text[:100]}")
+                return None
         except requests.exceptions.HTTPError as e:
-            print(f"[NSE] HTTP error: {e.response.status_code} - {e.response.text}")
+            print(f"[NSE] HTTP error: {e.response.status_code}")
         except requests.exceptions.RequestException as e:
             print(f"[NSE] Request failed: {e}")
         return None
@@ -59,3 +72,14 @@ class NSEClient:
         if data and 'trading' in data:
             return [h['tradingDate'] for h in data['trading']]
         return []
+
+    def get_indices(self):
+        """
+        Fetches the current data for all NSE indices.
+        URL: https://www.nseindia.com/api/allIndices
+        """
+        url = f"{self.base_url}/api/allIndices"
+        headers = self.headers.copy()
+        headers["Referer"] = f"{self.base_url}/market-data/live-equity-market"
+        self.session.headers.update(headers)
+        return self._make_get_request(url)

@@ -1,0 +1,50 @@
+{
+    "pattern_id": "SNAP_REVERSAL_SHORT",
+    "regime_config": {
+        "SIDEWAYS": {
+            "allow_entry": true,
+            "quantity_mod": 1.0,
+            "tp_mult": 1.5
+        },
+        "BEARISH": {
+            "allow_entry": true,
+            "quantity_mod": 1.5,
+            "tp_mult": 2.0
+        },
+        "COMPLETE_BEARISH": {
+            "allow_entry": true,
+            "quantity_mod": 1.5,
+            "tp_mult": 2.5
+        }
+    },
+    "phases": [
+        {
+            "id": "DETECTION",
+            "conditions": [
+                "high_wick(candle) > (candle_size(candle) * 0.4)",
+                "volume > moving_avg(history, 20, 'volume') * 1.2"
+            ],
+            "capture": {
+                "snap_high": "candle.high",
+                "snap_low": "candle.low"
+            },
+            "timeout": 0
+        },
+        {
+            "id": "TRIGGER",
+            "conditions": [
+                "close < vars.snap_low",
+                "close < open"
+            ],
+            "capture": {},
+            "timeout": 3
+        }
+    ],
+    "execution": {
+        "side": "SELL",
+        "entry": "close",
+        "sl": "vars.snap_high",
+        "tp": "close - (vars.snap_high - close) * 1.5",
+        "option_selection": "ATM_PUT"
+    }
+}

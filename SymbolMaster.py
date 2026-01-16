@@ -76,7 +76,7 @@ class SymbolMaster:
                         if row['name'] == "Nifty 50": self._mappings["NIFTY"] = key
                         elif row['name'] == "Nifty Bank": self._mappings["BANKNIFTY"] = key
 
-                print(f"  ✓ Loaded {len(self._mappings)} keys from SQLite.")
+                print(f"  [OK] Loaded {len(self._mappings)} keys from SQLite.")
                 self._initialized = True
                 return
         except Exception as e:
@@ -124,7 +124,7 @@ class SymbolMaster:
                     if row['name'] == "Nifty 50": self._mappings["NIFTY"] = key
                     elif row['name'] == "Nifty Bank": self._mappings["BANKNIFTY"] = key
 
-            print(f"  ✓ Parsed and cached {len(self._mappings)} keys to SQLite.")
+            print(f"  [OK] Parsed and cached {len(self._mappings)} keys to SQLite.")
             self._initialized = True
 
         except Exception as e:

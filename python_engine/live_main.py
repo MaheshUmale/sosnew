@@ -39,31 +39,124 @@ class LiveTradingEngine:
             'NSE_INDEX|Nifty Bank',
         }
         self.subscribed_instruments = set()
+        self._candle_cache = {}  # {symbol: list of VolumeBar-like dicts}
+        self._atr_period = 14
 
         self._fno_loaded = False
         self._load_instruments()
 
+    def _calculate_atr(self, symbol, current_candle):
+        """
+        Calculate ATR for a symbol using the last N candles in the cache.
+        """
+        if symbol not in self._candle_cache:
+            self._candle_cache[symbol] = []
+        
+        # Append the current candle to the cache
+        self._candle_cache[symbol].append({
+            'high': current_candle['high'],
+            'low': current_candle['low'],
+            'close': current_candle['close']
+        })
+        
+        # Keep only the last atr_period + 1 candles (need previous close for TR)
+        if len(self._candle_cache[symbol]) > self._atr_period + 1:
+            self._candle_cache[symbol] = self._candle_cache[symbol][-(self._atr_period + 1):]
+        
+        candles = self._candle_cache[symbol]
+        if len(candles) < 2:
+            return 0.0  # Not enough data
+
+        true_ranges = []
+        for i in range(1, len(candles)):
+            high = candles[i]['high']
+            low = candles[i]['low']
+            prev_close = candles[i - 1]['close']
+            tr = max(high - low, abs(high - prev_close), abs(low - prev_close))
+            true_ranges.append(tr)
+
+        if not true_ranges:
+            return 0.0
+        
+        return sum(true_ranges) / len(true_ranges)
+
+    async def _pre_load_history(self):
+        """Pre-loads recent historical data to prime the strategy indicators."""
+        print("[LiveTradingEngine] Pre-loading historical data for indicators...")
+        for symbol in self.symbols:
+            try:
+                # Fetch last 100 candles for indices
+                df = self.data_manager.get_historical_candles(symbol, n_bars=100)
+                if df is not None and not df.empty:
+                    # Ensure timestamp is datetime
+                    df['timestamp'] = pd.to_datetime(df['timestamp'])
+                    # Candles are usually DESC in DB/API, we need ASC for heartbeats
+                    df = df.sort_values(by='timestamp', ascending=True)
+                    print(f"  Loaded {len(df)} candles for {symbol} to prime engine.")
+                    for _, row in df.iterrows():
+                        # Prime the ATR cache with historical data
+                        candle_for_atr = {
+                            'high': row['high'],
+                            'low': row['low'],
+                            'close': row['close']
+                        }
+                        self._calculate_atr(symbol, candle_for_atr)
+                        
+                        event = MarketEvent(
+                            type=MessageType.CANDLE_UPDATE,
+                            timestamp=row['timestamp'].timestamp(),
+                            symbol=symbol,
+                            candle=VolumeBar(
+                                symbol=symbol,
+                                timestamp=row['timestamp'].timestamp(),
+                                open=row['open'],
+                                high=row['high'],
+                                low=row['low'],
+                                close=row['close'],
+                                volume=row['volume']
+                            ),
+                            sentiment=None
+                        )
+                        # Only prime the matcher, don't execute trades during priming
+                        self.pattern_matcher_handler.on_event(event)
+                    print(f"  ATR cache primed for {symbol}: {len(self._candle_cache.get(symbol, []))} candles cached.")
+            except Exception as e:
+                print(f"  [ERROR] Failed to pre-load history for {symbol}: {e}")
+
+
     def _load_instruments(self):
-        """Initial instrument loading. Indices are always loaded. Options are loaded if spot is available."""
-        # Subscribe using proper instrument keys
+        """Initial instrument loading. Indices are always loaded. Options are limited to ATM to avoid 403."""
+        # 1. Subscribe to Indices
         instrument_keys_to_subscribe = []
         for s in self.symbols:
             key = SymbolMaster.get_upstox_key(s)
             if key:
                 instrument_keys_to_subscribe.append(key)
-
         self.subscribed_instruments.update(instrument_keys_to_subscribe)
 
+        # 2. Subscribe to ATM Options (Dynamic)
+        # We fetch current spot prices to determine ATM
         try:
-            fno_instruments = self.data_manager.load_and_cache_fno_instruments()
-            if fno_instruments:
-                option_symbols_to_subscribe = []
-                for symbol, data in fno_instruments.items():
-                    option_symbols_to_subscribe.extend(data['all_keys'])
-                self.subscribed_instruments.update(option_symbols_to_subscribe)
-                self._fno_loaded = True
+            print("[LiveTradingEngine] Loading FNO master to resolve ATM picks...")
+            self.data_manager.load_and_cache_fno_instruments()
         except Exception as e:
-            print(f"[LiveTradingEngine] Initial FNO load deferred: {e}")
+            print(f"[LiveTradingEngine] Failed to load FNO master: {e}")
+
+        for s in ["NIFTY", "BANKNIFTY"]:
+            try:
+                spot = self.data_manager.get_last_traded_price(s)
+                if spot:
+                    atm_strike = self.data_manager.calculate_atm_strike(s, spot)
+                    # Get CE and PE keys
+                    ce_key, ce_symbol = self.data_manager.get_atm_option_details(s, "BUY") # Proxied to ATM_CALL
+                    pe_key, pe_symbol = self.data_manager.get_atm_option_details(s, "SELL") # Proxied to ATM_PUT
+                    
+                    if ce_key: self.subscribed_instruments.add(ce_key)
+                    if pe_key: self.subscribed_instruments.add(pe_key)
+                    print(f"  [Live] Identified ATM for {s}: {ce_symbol}, {pe_symbol}")
+                    self._fno_loaded = True
+            except Exception as e:
+                print(f"  [WARN] Failed to load ATM options for {s}: {e}")
 
     def on_message(self, message):
         """Thread-safe callback to schedule message processing on the main event loop."""
@@ -73,81 +166,142 @@ class LiveTradingEngine:
         """Asynchronously processes the market data."""
         global streamer
 
+        if not data:
+            return
+            
+        if not isinstance(data, dict):
+             # print(f"[DEBUG] Received non-dict data: {type(data)}")
+             return
+
         # Periodically fetch option chain data to populate the DB
-        # This ensures strategy evaluation has access to PCR/OI data
         now = datetime.now()
         if not hasattr(self, '_last_chain_fetch') or (now - self._last_chain_fetch).total_seconds() > 300: # Every 5 mins
             for symbol in ["NIFTY", "BANKNIFTY"]:
                 try:
-                    print(f"[LiveTradingEngine] Fetching fresh option chain for {symbol}...")
                     self.data_manager.get_option_chain(symbol)
                     self._last_chain_fetch = now
                 except Exception as e:
-                    print(f"[LiveTradingEngine] Failed to fetch option chain for {symbol}: {e}")
+                    pass
 
-        if 'feeds' in data:
-            for symbol_key, feed in data['feeds'].items():
-                market_ohlc_list = feed.get('ff', {}).get('marketFF', {}).get('marketOHLC', {}).get('ohlc', [])
-                one_min_candle = None
-                for ohlc_item in market_ohlc_list:
-                    if ohlc_item.get('interval') == 'I1':
-                        one_min_candle = ohlc_item
-                        break
+        feeds = data.get('feeds', {})
+        if not feeds:
+            return
 
-                if one_min_candle:
-                    ticker = SymbolMaster.get_ticker_from_key(symbol_key)
-                    # Use ticker for debugging instead of raw key
-                    print(f"[DEBUG] Received data for {ticker} at {one_min_candle.get('ts')}")
+        for symbol_key, feed in feeds.items():
+            # Unified OHLC extraction from Upstox SDK v3 feeds
+            ohlc_data = []
+            if 'fullFeed' in feed:
+                ff = feed['fullFeed']
+                if 'indexFF' in ff and 'marketOHLC' in ff['indexFF']:
+                    ohlc_data = ff['indexFF']['marketOHLC'].get('ohlc', [])
+                elif 'marketFF' in ff and 'marketOHLC' in ff['marketFF']:
+                    ohlc_data = ff['marketFF']['marketOHLC'].get('ohlc', [])
+            elif 'ff' in feed: # Legacy/Alternate key
+                ff = feed['ff']
+                if 'marketFF' in ff and 'marketOHLC' in ff['marketFF']:
+                    ohlc_data = ff['marketFF']['marketOHLC'].get('ohlc', [])
 
-                    # If FNO instruments were not loaded (due to missing spot price), try loading them now
-                    if not self._fno_loaded and ticker in ["NSE|INDEX|NIFTY", "NSE|INDEX|BANKNIFTY"]:
-                        print(f"Index data received for {ticker}, attempting to load FNO instruments...")
-                        self._load_instruments()
-                        if self._fno_loaded and streamer:
-                            # Update subscription on the existing connection
-                            try:
-                                instruments = list(self.subscribed_instruments)
-                                print(f"Updating subscription with {len(instruments)} instruments...")
-                                streamer.subscribe(instruments, "full")
-                            except Exception as e:
-                                print(f"Failed to update subscription: {e}")
+            if not ohlc_data:
+                continue
 
-                    candle_timestamp = datetime.fromtimestamp(int(one_min_candle['ts']) / 1000)
-                    # Create a DataFrame for the new candle data
-                    candle_df = pd.DataFrame([{
-                        'timestamp': candle_timestamp,
-                        'open': one_min_candle['open'],
-                        'high': one_min_candle['high'],
-                        'low': one_min_candle['low'],
-                        'close': one_min_candle['close'],
-                        'volume': int(one_min_candle['vol']),
-                        'oi': 0  # Default OI to 0 for live data
-                    }])
+            one_min_candle = None
+            for ohlc_item in ohlc_data:
+                if ohlc_item.get('interval') == 'I1':
+                    one_min_candle = ohlc_item
+                    break
 
-                    # Store the candle data in the database
-                    exchange = Config.get('live_data_exchange', 'NSE')
-                    interval = Config.get('live_data_interval', '1m')
-                    self.data_manager.db_manager.store_historical_candles(ticker, exchange, interval, candle_df)
+            if one_min_candle:
+                ticker = SymbolMaster.get_ticker_from_key(symbol_key)
+                
+                # Normalize ticker for ATR cache consistency with primed symbols
+                # Primed symbols: 'NSE_INDEX|Nifty 50', 'NSE_INDEX|Nifty Bank'
+                # Live tickers might be: 'NSE|INDEX|NIFTY', 'NSE|INDEX|BANKNIFTY'
+                # Normalize to primed format for ATR cache keying
+                if ticker in ["NSE|INDEX|NIFTY", "NSE|INDEX|BANKNIFTY", "NIFTY", "BANKNIFTY"]:
+                    if "BANK" in ticker.upper():
+                        atr_cache_key = "NSE_INDEX|Nifty Bank"
+                    else:
+                        atr_cache_key = "NSE_INDEX|Nifty 50"
+                else:
+                    atr_cache_key = ticker
+                
+                print(f".", end="", flush=True)
+ 
+                
+                # Detect if a minute has passed to fetch the finalized candle from API
+                candle_ts = int(one_min_candle['ts'])
+                if not hasattr(self, '_last_processed_min'):
+                    self._last_processed_min = {}
+                
+                if ticker not in self._last_processed_min:
+                    self._last_processed_min[ticker] = candle_ts
+                    continue 
 
-                    event = MarketEvent(
-                        type=MessageType.MARKET_UPDATE,
-                        timestamp=datetime.now().timestamp(),
-                        symbol=ticker,
-                        candle=VolumeBar(
-                            symbol=ticker,
-                            timestamp=candle_timestamp.timestamp(),
-                            open=one_min_candle['open'],
-                            high=one_min_candle['high'],
-                            low=one_min_candle['low'],
-                            close=one_min_candle['close'],
-                            volume=int(one_min_candle['vol'])
-                        )
-                    )
-                    print(f"[DEBUG] Dispatching event for {ticker}: {event.candle.close}")
-                    self.option_chain_handler.on_event(event)
-                    self.sentiment_handler.on_event(event)
-                    self.pattern_matcher_handler.on_event(event)
-                    self.execution_handler.on_event(event)
+                if candle_ts > self._last_processed_min[ticker]:
+                    self._last_processed_min[ticker] = candle_ts
+                    print(f"\n[LiveTradingEngine] Minute changed for {ticker}. Fetching finalized candle...")
+                    
+                    # Fetch the most recent 1-min candles from Intraday API
+                    # The API returns the last closed 1-min candle as the first item (or last depending on sort)
+                    # We fetch 2 bars to be safe
+                    intra_resp = self.data_manager.upstox_client.get_intra_day_candle_data(symbol_key, '1m')
+                    if intra_resp and hasattr(intra_resp, 'data') and hasattr(intra_resp.data, 'candles'):
+                        # Upstox Intraday API returns candles in reverse chronological order
+                        # candles[0] is the current forming candle, candles[1] is the last closed candle
+                        if len(intra_resp.data.candles) >= 2:
+                            final_candle = intra_resp.data.candles[1] # Last closed 1-min candle
+                            
+                            candle_timestamp = pd.to_datetime(final_candle[0])
+                            
+                            # Create refined candle data
+                            candle_df = pd.DataFrame([{
+                                'timestamp': candle_timestamp,
+                                'open': float(final_candle[1]),
+                                'high': float(final_candle[2]),
+                                'low': float(final_candle[3]),
+                                'close': float(final_candle[4]),
+                                'volume': int(final_candle[5]),
+                                'oi': int(final_candle[6]) if len(final_candle) > 6 else 0
+                            }])
+
+                            # Store and Dispatch
+                            self.data_manager.db_manager.store_historical_candles(ticker, 'NSE', '1m', candle_df)
+                            
+                            # Calculate ATR for this candle using normalized cache key
+                            candle_for_atr = {
+                                'high': float(final_candle[2]),
+                                'low': float(final_candle[3]),
+                                'close': float(final_candle[4])
+                            }
+                            calculated_atr = self._calculate_atr(atr_cache_key, candle_for_atr)
+                            
+                            event = MarketEvent(
+                                type=MessageType.MARKET_UPDATE,
+                                timestamp=datetime.now().timestamp(),
+                                symbol=ticker,
+                                candle=VolumeBar(
+                                    symbol=ticker,
+                                    timestamp=candle_timestamp.timestamp(),
+                                    open=float(final_candle[1]),
+                                    high=float(final_candle[2]),
+                                    low=float(final_candle[3]),
+                                    close=float(final_candle[4]),
+                                    volume=int(final_candle[5]),
+                                    atr=calculated_atr
+                                ),
+                                sentiment=self.data_manager.get_current_sentiment(ticker)
+                            )
+
+                            
+                            print(f"[LiveTradingEngine] Dispatching FINALIZED candle for {ticker}: Close={event.candle.close}, Vol={event.candle.volume}")
+                            self.option_chain_handler.on_event(event)
+                            self.sentiment_handler.on_event(event)
+                            
+                            # Pattern Matcher ONLY for Indices
+                            if ticker in ["NSE|INDEX|NIFTY", "NSE|INDEX|BANKNIFTY", "NIFTY", "BANKNIFTY", "NSE_INDEX|Nifty 50", "NSE_INDEX|Nifty Bank"]:
+                                self.pattern_matcher_handler.on_event(event)
+                            
+                            self.execution_handler.on_event(event)
 
     def on_open(self):
         global streamer
@@ -224,6 +378,7 @@ class LiveTradingEngine:
             print("         'upstox_access_token': 'YOUR_TOKEN'")
             return
 
+        await self._pre_load_history()
         self.start_websocket_thread()
         print("Live trading engine started. Waiting for market data...")
         # Keep the main async thread alive

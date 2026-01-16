@@ -14,10 +14,20 @@ class InstrumentLoader:
         full_mapping = {}
 
         for symbol in symbols:
+            # Map simplified symbol 'NIFTY' to Upstox name 'Nifty 50'
+            # NOTE: ExtractInstrumentKeys.py uses 'name' == 'NIFTY' for options, NOT 'Nifty 50'
+            # search_name = "Nifty 50" if symbol == "NIFTY" else "Nifty Bank" if symbol == "BANKNIFTY" else symbol
+            
             spot = spot_prices.get(symbol)
 
             # --- 1. Current Month Future ---
+            # Future names are typically "NIFTY" or "BANKNIFTY" in the JSON, NOT "Nifty 50"
+            # We need to check both or assume standard abbreviations for Futures vs Indices
+            # Based on DB dump: "NIFTY FUT..." comes from name="NIFTY" (likely) or just matched on trading symbol.
+            # Let's try matching name against the input symbol first for Futures, as they often match "NIFTY" / "BANKNIFTY"
+            
             fut_df = df[(df['name'] == symbol) & (df['instrument_type'] == 'FUT')].sort_values(by='expiry')
+            
             try:
                 current_fut_key = fut_df.iloc[0]['instrument_key']
             except IndexError:
@@ -25,8 +35,13 @@ class InstrumentLoader:
                 continue
 
             # --- 2. Nearest Expiry Options ---
-            # Filter for Options for the specific index
+            # Options for Nifty are under 'Nifty 50'
             opt_df = df[(df['name'] == symbol) & (df['instrument_type'].isin(['CE', 'PE']))].copy()
+            
+            if opt_df.empty:
+                print(f"[InstrumentLoader] ERROR: No options found for {search_name}. DF Shape: {df.shape}")
+                print(f"[InstrumentLoader] Unique Names in DF: {df['name'].unique()[:20]}")
+                continue
 
             # Ensure expiry is in datetime format for accurate sorting
             opt_df['expiry'] = pd.to_datetime(opt_df['expiry'], origin='unix', unit='ms')

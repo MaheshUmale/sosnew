@@ -84,3 +84,16 @@ class UpstoxClient:
             instrument_key=instrument_key,
             expiry_date=expiry_date
         )
+
+    def get_ltp(self, instrument_keys):
+        """
+        Fetches the last traded price for one or more instrument keys.
+        instrument_keys can be a single string or a comma-separated string of keys.
+        """
+        if not self.api_client: return None
+        try:
+            api_instance = upstox_client.MarketQuoteV3Api(self.api_client)
+            return api_instance.get_ltp(instrument_key=instrument_keys)
+        except upstox_client.ApiException as e:
+            print(f"[UpstoxClient] API Error in get_ltp: {e.body}")
+            return None

@@ -22,7 +22,9 @@ class NSEHistoricalAPI:
         # Check if we already have session cookies
         if not self.session.cookies:
             try:
-                self.session.get(self.base_url, timeout=10)
+                self.session.get(self.base_url, timeout=15)
+                # Also hit a subpage
+                self.session.get(f"{self.base_url}/market-data/live-equity-market", timeout=15)
                 # print("Session initialized with new cookies.")
             except Exception as e:
                 print(f"Failed to initialize session: {e}")
@@ -30,13 +32,23 @@ class NSEHistoricalAPI:
     def _make_get_request(self, url, params=None):
         """Helper method for making authenticated GET requests."""
         self._init_session()
-        time.sleep(0.5) # Be kind to their servers
+        time.sleep(1.0) # Be kind to their servers
         try:
-            response = self.session.get(url, params=params, timeout=10)
+            response = self.session.get(url, params=params, timeout=15)
+            if response.status_code == 401 or response.status_code == 403:
+                print(f"[NSEAPI] Session expired or blocked. Re-initializing...")
+                self.session.cookies.clear()
+                self._init_session()
+                response = self.session.get(url, params=params, timeout=15)
+                
             response.raise_for_status()
-            return response.json()
+            try:
+                return response.json()
+            except ValueError:
+                print(f"[NSEAPI] Failed to decode JSON from {url}. Response started with: {response.text[:100]}")
+                return None
         except requests.exceptions.HTTPError as e:
-            print(f"HTTP error: {e.response.status_code} - {e.response.text}")
+            print(f"HTTP error: {e.response.status_code}")
         except requests.exceptions.RequestException as e:
             print(f"Request failed: {e}")
         return None
@@ -105,6 +117,18 @@ class NSEHistoricalAPI:
         }
         print(f"\nFetching expiry dates for {symbol} ({year})...")
         return self._make_get_request(url, params=params)
+
+    def get_indices(self):
+        """
+        Fetches the current data for all NSE indices.
+        URL: https://www.nseindia.com/api/allIndices
+        """
+        url = f"{self.base_url}/api/allIndices"
+        # The referer might need to be specific for live data
+        headers = self.headers.copy()
+        headers["Referer"] = f"{self.base_url}/market-data/live-equity-market"
+        self.session.headers.update(headers)
+        return self._make_get_request(url)
 
 
 # --- Example Usage ---

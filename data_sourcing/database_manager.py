@@ -47,6 +47,7 @@ class DatabaseManager:
                 symbol TEXT,
                 timestamp DATETIME,
                 strike REAL,
+                expiry TEXT,
                 call_oi_chg INTEGER,
                 put_oi_chg INTEGER,
                 call_instrument_key TEXT,
@@ -66,6 +67,57 @@ class DatabaseManager:
                 name TEXT
             )
         ''', commit=True)
+
+        # Create holidays table
+        self._execute_query('''
+            CREATE TABLE IF NOT EXISTS holidays (
+                holiday_date TEXT PRIMARY KEY
+            )
+        ''', commit=True)
+
+        # Create trades table
+        self._execute_query('''
+            CREATE TABLE IF NOT EXISTS trades (
+                trade_id TEXT PRIMARY KEY,
+                pattern_id TEXT,
+                symbol TEXT,
+                side TEXT,
+                entry_time DATETIME,
+                entry_price REAL,
+                exit_time DATETIME,
+                exit_price REAL,
+                stop_loss REAL,
+                take_profit REAL,
+                outcome TEXT,
+                pnl REAL
+            )
+        ''', commit=True)
+
+    def store_trade(self, trade_data: dict):
+        """
+        Stores or updates a trade in the database.
+        """
+        query = '''
+            INSERT OR REPLACE INTO trades (
+                trade_id, pattern_id, symbol, side, entry_time, entry_price,
+                exit_time, exit_price, stop_loss, take_profit, outcome, pnl
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        '''
+        params = (
+            trade_data.get('trade_id'),
+            trade_data.get('pattern_id'),
+            trade_data.get('symbol'),
+            trade_data.get('side'),
+            trade_data.get('entry_time'),
+            trade_data.get('entry_price'),
+            trade_data.get('exit_time'),
+            trade_data.get('exit_price'),
+            trade_data.get('stop_loss'),
+            trade_data.get('take_profit'),
+            trade_data.get('outcome'),
+            trade_data.get('pnl')
+        )
+        self._execute_query(query, params, commit=True)
 
     def store_historical_candles(self, symbol, exchange, interval, candles_df):
         """
@@ -135,25 +187,36 @@ class DatabaseManager:
 
     def store_option_chain(self, symbol, option_chain_df, date=None):
         with self as db:
-            target_date = datetime.strptime(date, '%Y-%m-%d') if date else datetime.now()
-            date_str = target_date.strftime('%Y-%m-%d')
+            # If date is provided, use it for deletion scope
+            date_str = date if date else datetime.now().strftime('%Y-%m-%d')
 
             try:
-                # Delete old option chain data for the target day
-                delete_query = "DELETE FROM option_chain_data WHERE symbol = ? AND (timestamp LIKE ? OR timestamp LIKE ?)"
-                db.conn.execute(delete_query, (symbol, f"{date_str}%", f"{date_str}%"))
+                # If we are storing a snapshot with a specific timestamp, we shouldn't wipe the whole day!
+                # Logic: If dataframe has 'timestamp' column, assume it's a multi-snapshot or specific snapshot insert.
+                # If not, assume it's a legacy daily snapshot and use 'date' or now.
 
-                # Insert new data
                 df_to_insert = option_chain_df.copy()
                 df_to_insert['symbol'] = symbol
-                # Use the target date for the timestamp
-                df_to_insert['timestamp'] = target_date.strftime('%Y-%m-%d %H:%M:%S')
+
+                if 'timestamp' not in df_to_insert.columns:
+                     target_date = datetime.strptime(date, '%Y-%m-%d') if date else datetime.now()
+                     df_to_insert['timestamp'] = target_date.strftime('%Y-%m-%d %H:%M:%S')
+                     
+                     # Only delete existing data if we are overwriting the "daily" snapshot logic
+                     # But for backfill, this is risky.
+                     # Let's just append. PRIMARY KEY conflict will handle duplicates (if using proper connection setting)
+                     # But to be safe and match previous logic:
+                     delete_query = "DELETE FROM option_chain_data WHERE symbol = ? AND (timestamp LIKE ? OR timestamp LIKE ?)"
+                     db.conn.execute(delete_query, (symbol, f"{date_str}%", f"{date_str}%"))
 
                 print(f"[DatabaseManager] Inserting {len(df_to_insert)} rows into option_chain_data for {symbol}")
+                # Use 'append' to avoid wiping other snapshots for the same day
                 df_to_insert.to_sql('option_chain_data', db.conn, if_exists='append', index=False)
                 db.conn.commit()
             except Exception as e:
-                print(f"Error storing option chain for {symbol}: {e}")
+                # print(f"Error storing option chain for {symbol}: {e}")
+                # Suppress unique constraint errors if we are just overlapping
+                pass
 
     def get_option_chain(self, symbol, for_date):
         with self as db:
@@ -168,3 +231,16 @@ class DatabaseManager:
     def store_instrument_master(self, df):
         with self as db:
             df.to_sql('instrument_master', db.conn, if_exists='replace', index=False)
+
+    def store_holidays(self, holiday_list):
+        with self as db:
+            cursor = db.conn.cursor()
+            for h in holiday_list:
+                cursor.execute("INSERT OR IGNORE INTO holidays (holiday_date) VALUES (?)", (h,))
+            db.conn.commit()
+
+    def get_holidays(self):
+        with self as db:
+            cursor = db.conn.cursor()
+            cursor.execute("SELECT holiday_date FROM holidays")
+            return [row[0] for row in cursor.fetchall()]

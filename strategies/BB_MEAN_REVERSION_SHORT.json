@@ -1,0 +1,43 @@
+{
+    "pattern_id": "BB_MEAN_REVERSION_SHORT",
+    "regime_config": {
+        "SIDEWAYS": {
+            "allow_entry": true,
+            "quantity_mod": 1.2,
+            "tp_mult": 1.5
+        },
+        "BULLISH": {
+            "allow_entry": true,
+            "quantity_mod": 1.0,
+            "tp_mult": 1.0
+        }
+    },
+    "phases": [
+        {
+            "id": "OUTSIDE",
+            "conditions": [
+                "high > bb_upper(history, 20, 2.0)"
+            ],
+            "capture": {
+                "upper_band": "bb_upper(history, 20, 2.0)"
+            },
+            "timeout": 0
+        },
+        {
+            "id": "TRIGGER",
+            "conditions": [
+                "close < vars.upper_band",
+                "close < open"
+            ],
+            "capture": {},
+            "timeout": 3
+        }
+    ],
+    "execution": {
+        "side": "SELL",
+        "entry": "close",
+        "sl": "highest(history, 3, 'high')",
+        "tp": "close - (sl - close) * 2.0",
+        "option_selection": "ATM_PUT"
+    }
+}

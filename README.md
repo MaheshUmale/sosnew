@@ -92,3 +92,14 @@ python validate_strategies.py
 ```
 
 If all your strategy files are valid, you will see a message saying "All strategy files are valid." If there are any errors, they will be printed to the console.
+
+## Recent Updates (Jan 2026)
+
+### Data Integrity & Leak Prevention
+- **Optimized Data Fetching**: critical algorithms like `get_atm_option_details` now accept `spot_price` injection to prevent redundant API calls and potential data leaks (fetching "future" data in backtests or stale data in live).
+- **Volume Data Augmentation**: The system now seamlessly integrates `tvDatafeed` to fetch accurate volume data for NIFTY and BANKNIFTY indices, which is often missing or zeroed out in standard feeds.
+- **Robust Symbol Resolution**: `instrument_loader.py` and `SymbolMaster` have been aligned to correctly parse and cache NSE F&O instrument keys (from `NSE.json.gz`), ensuring reliable Option Chain resolution.
+
+### System Requirements
+- **tvDatafeed**: Ensure you have `tvdatafeed` installed in your environment (`pip install tvdatafeed`).
+- **Chrome**: `tvDatafeed` requires a Chrome browser installation for authentication.

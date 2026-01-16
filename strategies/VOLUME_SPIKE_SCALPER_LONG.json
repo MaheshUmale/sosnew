@@ -1,0 +1,37 @@
+{
+    "pattern_id": "VOLUME_SPIKE_SCALPER_LONG",
+    "regime_config": {
+        "SIDEWAYS": {
+            "allow_entry": true,
+            "quantity_mod": 1.0,
+            "tp_mult": 1.2
+        },
+        "BULLISH": {
+            "allow_entry": true,
+            "quantity_mod": 1.5,
+            "tp_mult": 2.5
+        }
+    },
+    "phases": [
+        {
+            "id": "SPIKE",
+            "conditions": [
+                "volume > moving_avg(history, 20, 'volume') * 3.0",
+                "close > open",
+                "body_size(candle) > moving_avg(history, 20, 'body_size') * 1.5"
+            ],
+            "capture": {
+                "spike_high": "high",
+                "spike_low": "low"
+            },
+            "timeout": 0
+        }
+    ],
+    "execution": {
+        "side": "BUY",
+        "entry": "close",
+        "sl": "vars.spike_low",
+        "tp": "close + (close - vars.spike_low) * 1.5",
+        "option_selection": "ATM_CALL"
+    }
+}

@@ -1,9 +1,9 @@
-from TVDataFeed  import TvDatafeed, Interval
+from tvDatafeed  import TvDatafeed, Interval
 
 class TVDatafeedClient:
     def __init__(self, username=None, password=None):
         try:
-            self.tv = TvDatafeed(username, password)
+            self.tv = TvDatafeed(username, password, auto_login=False)
         except Exception as e:
             print(f"[TVDatafeed] Failed to initialize: {e}")
             self.tv = None

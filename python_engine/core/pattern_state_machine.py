@@ -25,6 +25,14 @@ class PatternStateMachine:
         if not current_phase:
             return
 
+        # Regime Check: If we are at the first phase (starting a pattern), check if entry is allowed
+        if self._state.current_phase_id == self._definition.phases[0].id:
+            regime_name = sentiment.regime if sentiment else "SIDEWAYS"
+            regime_config = self._definition.regime_config.get(regime_name)
+            # If the specific regime is defined and allow_entry is False, skip
+            if regime_config and hasattr(regime_config, 'allow_entry') and not regime_config.allow_entry:
+                return
+
         self._build_context(candle, sentiment, screener_data)
 
         if self._check_conditions(current_phase.conditions):
@@ -85,9 +93,11 @@ class PatternStateMachine:
         current_phase_index = self._find_phase_index(self._state.current_phase_id)
         if current_phase_index < len(self._definition.phases) - 1:
             next_phase_id = self._definition.phases[current_phase_index + 1].id
+            print(f"[PatternStateMachine] {self._symbol} ADVANCED: {self._state.current_phase_id} -> {next_phase_id} ({self._definition.pattern_id})")
             self._state.move_to(next_phase_id)
         else:
             self._is_triggered = True
+            print(f"!!! TRIGGER !!! for {self._definition.pattern_id} on {self._state.symbol} at candle {self._prev_candle} @time {self._prev_candle.timestamp if self._prev_candle else 'N/A'} ")
             logging.info(f"TRIGGER for {self._definition.pattern_id} on {self._state.symbol}")
 
     def _find_phase_index(self, phase_id: str) -> int:
