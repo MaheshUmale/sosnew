@@ -118,6 +118,7 @@ class DataManager:
             spot_price = self.get_last_traded_price(symbol)
         atm_strike = self.calculate_atm_strike(symbol, spot_price)
         strike_range = self._get_strike_range(symbol, atm_strike)
+        print(f"[DataManager] Spot Price: {spot_price}, ATM Strike: {atm_strike}, Strike Range: {strike_range}")
 
         if not strike_range:
             return None
@@ -127,12 +128,16 @@ class DataManager:
         try:
             instrument_key = SymbolMaster.get_upstox_key(symbol)
             stock_id = self.trendlyne_client.get_stock_id_for_symbol(symbol)
+            print(f"[DataManager] Upstox Key: {instrument_key}, Stock ID: {stock_id}")
             if instrument_key and stock_id:
                 expiries = self.trendlyne_client.get_expiry_dates(stock_id)
+                print(f"[DataManager] Expiries: {expiries}")
                 if expiries:
                     response = self.upstox_client.get_put_call_option_chain(instrument_key, expiries[0])
-                    if response and response.data:
+                    if response and hasattr(response, 'data') and response.data:
+                        print(f"[DataManager] Upstox Chain Data received: {len(response.data)} items")
                         chain = []
+                        print(f"[DataManager] First few strikes from API: {[float(x.strike_price) for x in response.data[:5]]}")
                         for item in response.data:
                             strike = float(item.strike_price)
                             if strike in strike_range:
@@ -146,6 +151,9 @@ class DataManager:
                                     "put_oi": item.put_options.market_data.oi
                                 })
                         chain_data = pd.DataFrame(chain)
+                        print(f"[DataManager] Chain DataFrame created: {len(chain_data)} rows")
+                    else:
+                        print(f"[DataManager] Upstox API returned no data for {instrument_key}")
         except Exception as e:
             print(f"[DataManager] Upstox option chain failed for {symbol}: {e}")
 
