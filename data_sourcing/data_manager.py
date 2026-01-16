@@ -1,5 +1,5 @@
 from data_sourcing.tvdatafeed_client import TVDatafeedClient
-from data_sourcing.upstox_client import UpstoxClient
+from data_sourcing.upstox_gateway import UpstoxClient
 from data_sourcing.trendlyne_client import TrendlyneClient
 from data_sourcing.nse_client import NSEClient
 from SymbolMaster import MASTER as SymbolMaster
@@ -114,13 +114,11 @@ class DataManager:
         strike_step = 100 if "BANKNIFTY" in symbol.upper() else 50
         return [atm_strike + i * strike_step for i in range(-5, 6)]
 
-    def get_historical_candles(self, symbol, exchange='NSE', interval='1m', n_bars=100, from_date=None, to_date=None):
+    def get_historical_candles(self, symbol, exchange='NSE', interval='1m', n_bars=100, from_date=None, to_date=None, mode='backtest'):
         print(f"[DataManager] get_historical_candles called for {symbol} | Interval: {interval}")
         
         # 0. Canonicalize Symbol
         canonical_symbol = SymbolMaster.get_canonical_ticker(symbol)
-        
-        from engine_config import Config
         
         # Ensure from_date and to_date are datetime objects
         if isinstance(from_date, str):
@@ -133,9 +131,6 @@ class DataManager:
         if from_date is None:
             from_date = to_date - timedelta(days=5)
 
-        # Canonicalize symbol for consistent DB storage and lookup
-        canonical_symbol = SymbolMaster.get_canonical_ticker(symbol)
-
         # First, try to get data from the local database
         local_data = self.db_manager.get_historical_candles(canonical_symbol, exchange, interval, from_date, to_date)
         if local_data is not None and not local_data.empty:
@@ -145,13 +140,17 @@ class DataManager:
             if len(local_data) >= n_bars:
                 return local_data.tail(n_bars)
 
-        # If not in DB or not enough data, fetch from external sources
+        if mode == 'backtest':
+            print(f"[DataManager] [ERROR] Historical data for {canonical_symbol} not found in DB during backtest.")
+            return None
+
+        # If not in DB or not enough data, fetch from external sources (LIVE ONLY)
         print(f"Fetching historical candles for {canonical_symbol} from remote source...")
         data_to_store = None
         
         # Try TVDatafeed first if configured
-        if self.tv_client and "NIFTY" in canonical_symbol.upper():
-            from tvDatafeed import Interval
+        if self.tv_client and "NIFTY" in canonical_symbol.upper() and self.tv_client.tv:
+            from data_sourcing.tvdatafeed_client import Interval
             interval_map = {'1m': Interval.in_1_minute}
             
             # Map canonical symbol to TVDatafeed friendly symbol
@@ -218,15 +217,18 @@ class DataManager:
 
         return None
 
-    def get_option_chain(self, symbol, date=None):
+    def get_option_chain(self, symbol, date=None, mode='backtest'):
         target_date = datetime.strptime(date, '%Y-%m-%d') if date else datetime.now()
         date_str = target_date.strftime('%Y-%m-%d')
 
         # Try to get data from the local database first
         local_data = self.db_manager.get_option_chain(symbol, date_str)
         if local_data is not None and not local_data.empty:
-            print(f"Loaded option chain for {symbol} on {date_str} from local DB.")
             return local_data.to_dict('records')
+
+        if mode == 'backtest':
+            print(f"[DataManager] [ERROR] Option chain for {symbol} on {date_str} not found in DB during backtest.")
+            return None
 
         print(f"Fetching option chain for {symbol} for date {date_str} from remote source...")
 
@@ -453,75 +455,49 @@ class DataManager:
             return None, None
 
 
-    def get_pcr(self, symbol, date=None):
+    def get_pcr(self, symbol, date=None, timestamp=None, mode='backtest'):
+        """
+        Retrieves PCR from the enriched market_stats table.
+        """
+        target_date = datetime.strptime(date, '%Y-%m-%d') if date else datetime.now()
+        date_str = target_date.strftime('%Y-%m-%d')
 
-        # Primary method: NSE Client
+        # 1. Try market_stats table (Enriched data)
+        try:
+            from_dt = target_date.replace(hour=9, minute=0)
+            to_dt = target_date.replace(hour=15, minute=45)
+            stats = self.db_manager.get_market_stats(symbol, from_dt, to_dt)
+            if not stats.empty:
+                if timestamp:
+                    # Find closest timestamp
+                    stats['timestamp'] = pd.to_datetime(stats['timestamp'])
+                    target_ts = pd.to_datetime(timestamp)
+                    closest_row = stats.iloc[(stats['timestamp'] - target_ts).abs().argsort()[:1]]
+                    if not closest_row.empty:
+                        return float(closest_row.iloc[0]['pcr'])
+                else:
+                    return float(stats.iloc[-1]['pcr'])
+        except Exception as e:
+            print(f"[DataManager] Error fetching PCR from market_stats: {e}")
+
+        if mode == 'backtest':
+            return 1.0 # Default
+
+        # 2. Live Fallback: NSE Client
         data = self.nse_client.get_option_chain(symbol, indices=True)
         if data and 'records' in data and data.get('filtered'):
             ce_oi = data['filtered'].get('CE', {}).get('totOI', 0)
             pe_oi = data['filtered'].get('PE', {}).get('totOI', 0)
             if ce_oi > 0:
-                return round(pe_oi / ce_oi, 2)
+                pcr = round(pe_oi / ce_oi, 2)
+                return pcr
             
-           
-
-        # Failsafe method: Calculate from local option chain data
-        print(f"Primary PCR fetch failed for {symbol}. Using failsafe method.")
-        try:
-            symbol_prefix = "BANKNIFTY" if "BANK" in symbol.upper() else "NIFTY"
-            target_date = datetime.strptime(date, '%Y-%m-%d') if date else datetime.now()
-            date_str = target_date.strftime('%Y-%m-%d')
-
-            # 1. Get option chain (this will fetch from Upstox if not in DB)
-            chain_data = self.get_option_chain(symbol_prefix, date_str)
-            if not chain_data:
-                print("Failsafe PCR: No option chain data available.")
-                return 1.0
-            
-            option_chain_df = pd.DataFrame(chain_data)
-            if option_chain_df.empty:
-                print("Failsafe PCR: detailed option chain is empty.")
-                return 1.0
-
-            # 2. Get spot price to find ATM
-            spot_price = self.get_last_traded_price(symbol)
-            if not spot_price:
-                print("Failsafe PCR: Could not get last traded price.")
-                return 1.0
-
-            # 3. Calculate ATM and strike range
-            atm_strike = self.calculate_atm_strike(symbol_prefix, spot_price)
-            strike_step = 100 if "BANK" in symbol_prefix else 50
-            strike_range_lower = atm_strike - (7 * strike_step)
-            strike_range_upper = atm_strike + (7 * strike_step)
-
-            # 4. Filter chain and calculate PCR
-            pcr_chain = option_chain_df[
-                (option_chain_df['strike'] >= strike_range_lower) &
-                (option_chain_df['strike'] <= strike_range_upper)
-            ]
-
-            if pcr_chain.empty:
-                print("Failsafe PCR: No strikes found in the ATM+/-7 range.")
-                return 1.0
-
-            total_put_oi = pcr_chain['put_oi'].sum()
-            total_call_oi = pcr_chain['call_oi'].sum()
-
-            if total_call_oi > 0:
-                pcr_value = round(total_put_oi / total_call_oi, 2)
-                print(f"Failsafe PCR for {symbol_prefix} calculated as {pcr_value}")
-                return pcr_value
-
-        except Exception as e:
-            print(f"An error occurred during failsafe PCR calculation: {e}")
-
         return 1.0
-    def get_current_sentiment(self, symbol):
+    def get_current_sentiment(self, symbol, mode='backtest'):
         """
         Calculates and returns the current market sentiment for a given symbol.
         """
-        pcr_value = self.get_pcr(symbol)
+        pcr_value = self.get_pcr(symbol, mode=mode)
         
         # TODO: Implement actual advance/decline fetch logic
         # For now, default to neutral/balanced

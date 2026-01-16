@@ -1,4 +1,8 @@
-from tvDatafeed  import TvDatafeed, Interval
+try:
+    from tvDatafeed import TvDatafeed, Interval
+except ImportError:
+    TvDatafeed = None
+    Interval = None
 
 class TVDatafeedClient:
     def __init__(self, username=None, password=None):
