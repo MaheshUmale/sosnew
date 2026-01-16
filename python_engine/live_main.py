@@ -126,7 +126,7 @@ class LiveTradingEngine:
         def run_streamer():
             global streamer
             print(f"Starting UPSTOX SDK Streamer with {len(self.symbols)} instruments...")
-
+            print(f"Subscribed Instruments: {subscribed_instruments}")
             configuration = upstox_client.Configuration()
             configuration.access_token = self.access_token
 
