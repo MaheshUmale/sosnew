@@ -109,7 +109,14 @@ class LiveTradingEngine:
                     self.execution_handler.on_event(event)
 
     def on_open(self):
+        global streamer
         print("Streamer connection opened.")
+        try:
+            instruments = list(subscribed_instruments)
+            print(f"Sending On OPEN  subscription for {len(instruments)} instruments...{datetime.now()}")
+            streamer.subscribe(instruments, "full")
+        except Exception as e:
+            print(f"On Open  subscription failed: {e}")
 
     def on_error(self, error):
         print(f"Streamer Error: {error}")
