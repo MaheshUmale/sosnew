@@ -169,10 +169,21 @@ class DatabaseManager:
                 # Use to_sql with a temporary table for robust insertion
                 df_to_insert.to_sql('temp_historical_candles', db.conn, if_exists='replace', index=False)
 
-                # Use INSERT OR REPLACE to merge data from the temp table
+                # Use INSERT INTO ... ON CONFLICT to merge data and protect enriched columns (OI and Volume)
+                # This ensures that if we have non-zero OI/Volume in the main table,
+                # we don't overwrite it with 0s from a fresh (unenriched) candle fetch.
+                cols_to_update = [c for c in table_cols if c not in ['symbol', 'exchange', 'interval', 'timestamp']]
+                update_set = ", ".join([
+                    f"{col} = CASE WHEN EXCLUDED.{col} > 0 THEN EXCLUDED.{col} ELSE historical_candles.{col} END"
+                    if col in ['volume', 'oi'] else f"{col} = EXCLUDED.{col}"
+                    for col in cols_to_update
+                ])
+
                 merge_query = f"""
-                    INSERT OR REPLACE INTO historical_candles ({', '.join(table_cols)})
+                    INSERT INTO historical_candles ({', '.join(table_cols)})
                     SELECT {', '.join(table_cols)} FROM temp_historical_candles
+                    ON CONFLICT(symbol, exchange, interval, timestamp) DO UPDATE SET
+                    {update_set}
                 """
                 db.conn.execute(merge_query)
                 db.conn.commit()
@@ -217,32 +228,34 @@ class DatabaseManager:
             date_str = date if date else datetime.now().strftime('%Y-%m-%d')
 
             try:
-                # If we are storing a snapshot with a specific timestamp, we shouldn't wipe the whole day!
-                # Logic: If dataframe has 'timestamp' column, assume it's a multi-snapshot or specific snapshot insert.
-                # If not, assume it's a legacy daily snapshot and use 'date' or now.
-
                 df_to_insert = option_chain_df.copy()
                 df_to_insert['symbol'] = symbol
 
                 if 'timestamp' not in df_to_insert.columns:
-                     target_date = datetime.strptime(date, '%Y-%m-%d') if date else datetime.now()
+                     target_date = datetime.strptime(date_str, '%Y-%m-%d')
                      df_to_insert['timestamp'] = target_date.strftime('%Y-%m-%d %H:%M:%S')
-                     
-                     # Only delete existing data if we are overwriting the "daily" snapshot logic
-                     # But for backfill, this is risky.
-                     # Let's just append. PRIMARY KEY conflict will handle duplicates (if using proper connection setting)
-                     # But to be safe and match previous logic:
-                     delete_query = "DELETE FROM option_chain_data WHERE symbol = ? AND (timestamp LIKE ? OR timestamp LIKE ?)"
-                     db.conn.execute(delete_query, (symbol, f"{date_str}%", f"{date_str}%"))
 
-                print(f"[DatabaseManager] Inserting {len(df_to_insert)} rows into option_chain_data for {symbol}")
-                # Use 'append' to avoid wiping other snapshots for the same day
-                df_to_insert.to_sql('option_chain_data', db.conn, if_exists='append', index=False)
+                # Ensure timestamp is string for DB comparison
+                df_to_insert['timestamp'] = pd.to_datetime(df_to_insert['timestamp']).dt.strftime('%Y-%m-%d %H:%M:%S')
+
+                # Use temp table for INSERT OR REPLACE
+                df_to_insert.to_sql('temp_option_chain', db.conn, if_exists='replace', index=False)
+
+                cols = ['symbol', 'timestamp', 'strike', 'expiry', 'call_oi_chg', 'put_oi_chg', 'call_instrument_key', 'put_instrument_key', 'call_oi', 'put_oi']
+                actual_cols = [c for c in cols if c in df_to_insert.columns]
+
+                merge_query = f"""
+                    INSERT OR REPLACE INTO option_chain_data ({', '.join(actual_cols)})
+                    SELECT {', '.join(actual_cols)} FROM temp_option_chain
+                """
+                db.conn.execute(merge_query)
                 db.conn.commit()
+                # print(f"[DatabaseManager] Stored {len(df_to_insert)} rows into option_chain_data for {symbol}")
             except Exception as e:
-                # print(f"Error storing option chain for {symbol}: {e}")
-                # Suppress unique constraint errors if we are just overlapping
-                pass
+                print(f"Error storing option chain for {symbol}: {e}")
+                db.conn.rollback()
+            finally:
+                db.conn.execute("DROP TABLE IF EXISTS temp_option_chain")
 
     def get_option_chain(self, symbol, for_date):
         with self as db:
