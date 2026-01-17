@@ -15,7 +15,7 @@ class IngestionManager:
         self.data_manager = DataManager(access_token=access_token)
         self.db_manager = self.data_manager.db_manager
 
-    def ingest_historical_data(self, symbol, from_date, to_date, full_options=False):
+    def ingest_historical_data(self, symbol, from_date, to_date, full_options=False, force=False):
         """
         Comprehensive historical data ingestion:
         1. Index Candles (Upstox)
@@ -42,6 +42,16 @@ class IngestionManager:
             date_str = target_date.strftime('%Y-%m-%d')
             if date_str in holidays:
                 continue
+
+            # Check if data already exists for this day
+            if not force:
+                existing_candles = self.db_manager.get_historical_candles(canonical_symbol, 'NSE', '1m', date_str, date_str)
+                if existing_candles is not None and not existing_candles.empty:
+                    # Check if stats also exist
+                    existing_stats = self.db_manager.get_market_stats(canonical_symbol, date_str, date_str)
+                    if not existing_stats.empty:
+                        print(f"[*] Skipping {date_str} - Data already exists. Use --force to overwrite.")
+                        continue
 
             print(f"[*] Processing {date_str}...")
 
@@ -193,9 +203,10 @@ if __name__ == "__main__":
     parser.add_argument("--from_date", type=str, required=True)
     parser.add_argument("--to_date", type=str, required=True)
     parser.add_argument("--full-options", action="store_true", help="Fetch 1-min option snapshots (Trendlyne)")
+    parser.add_argument("--force", action="store_true", help="Force re-ingestion of data if it exists")
 
     args = parser.parse_args()
 
     SymbolMaster.initialize()
     manager = IngestionManager()
-    manager.ingest_historical_data(args.symbol, args.from_date, args.to_date, full_options=args.full_options)
+    manager.ingest_historical_data(args.symbol, args.from_date, args.to_date, full_options=args.full_options, force=args.force)
