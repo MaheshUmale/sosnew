@@ -186,6 +186,8 @@ class IngestionManager:
                     'pcr': pcr,
                     'oi_wall_above': oi_wall_above,
                     'oi_wall_below': oi_wall_below,
+                    'call_oi': total_call_oi,
+                    'put_oi': total_put_oi,
                     'advances': 0, # Placeholder
                     'declines': 0  # Placeholder
                 })
@@ -194,6 +196,22 @@ class IngestionManager:
                 stats_df = pd.DataFrame(stats_list)
                 self.db_manager.store_market_stats(symbol, stats_df)
                 print(f"      [OK] Stored {len(stats_df)} market stats snapshots.")
+
+                # Enrichment: Update Index Candles with proxy OI (Sum of all options OI)
+                try:
+                    with self.db_manager as db:
+                        for ts, group in stats_df.groupby('timestamp'):
+                            ts_str = ts.strftime('%Y-%m-%d %H:%M:%S')
+                            total_oi = int(group['call_oi'].iloc[0] + group['put_oi'].iloc[0])
+
+                            # Use SymbolMaster to get the exact key for the index
+                            instrument_key = SymbolMaster.get_upstox_key(symbol)
+                            db.conn.execute("UPDATE historical_candles SET oi = ? WHERE symbol = ? AND timestamp = ?",
+                                          (total_oi, instrument_key, ts_str))
+                        db.conn.commit()
+                        print(f"      [OK] Enriched Index Candles with proxy OI.")
+                except Exception as e:
+                    print(f"      [WARN] Could not enrich Index Candles with OI: {e}")
 
         except Exception as e:
             print(f"      [ERROR] Stats enrichment failed for {symbol} on {date_str}: {e}")
