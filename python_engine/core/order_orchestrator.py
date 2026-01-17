@@ -122,10 +122,11 @@ class OrderOrchestrator:
         underlying_symbol_for_position = state.symbol
 
         # This logic should apply to both live and backtest modes for index trading
-        is_index = "nifty" in state.symbol.lower() or "banknifty" in state.symbol.lower()
+        # Only treat as index if it's the underlying symbol, not an option symbol
+        is_underlying_index = state.symbol in ["NSE|INDEX|NIFTY", "NSE|INDEX|BANKNIFTY", "NIFTY", "BANKNIFTY"]
         instrument_key_to_trade = symbol_to_trade # Default to the underlying
 
-        if is_index:
+        if is_underlying_index:
             # SAFETY CHECK: Ensure we are not accidentally trading the index itself if we expect options
             # If the entry price is > 5000, it's almost certainly the index spot price, not a Nifty option price.
             # (BankNifty options can be expensive but usually < 3000-4000)
