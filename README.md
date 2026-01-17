@@ -35,13 +35,26 @@ The engine is built with a modular, event-driven architecture. The core componen
 
 ### Backtesting
 
-To run a backtest, use the `run.py` script with `backtest` mode and specify a symbol.
+To run a backtest, you first need to ingest historical data into the local database. The engine in `backtest` mode strictly reads from the database to ensure data integrity and prevent leaks.
+
+#### 1. Ingest Data
+Use the `ingestion.py` script to fetch historical index candles, option chains, and calculate market stats (like PCR).
 
 ```bash
-python run.py --mode backtest --symbol NIFTY
+# Ingest 15 days of NIFTY data
+PYTHONPATH=. python data_sourcing/ingestion.py --symbol NIFTY --from_date 2026-01-01 --to_date 2026-01-16
 ```
 
-This will fetch the latest historical data for the symbol, run it through the engine, and print any trade executions to the console.
+#### 2. Run Backtest
+Once the data is ingested, you can run the backtest for the specified period.
+
+```bash
+python run.py --mode backtest --symbol NIFTY --from-date 2026-01-12 --to-date 2026-01-16
+```
+
+If no dates are specified, it defaults to the last 5 days.
+
+This will run the ingested data through the engine and print any trade executions to the console.
 
 ### Live Trading
 

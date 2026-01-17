@@ -150,6 +150,7 @@ class DataManager:
 
         if mode == 'backtest':
             print(f"[DataManager] [ERROR] Historical data for {canonical_symbol} not found in DB during backtest.")
+            print(f"              Please run ingestion first: PYTHONPATH=. python data_sourcing/ingestion.py --symbol {canonical_symbol} --from_date {from_date.strftime('%Y-%m-%d')} --to_date {to_date.strftime('%Y-%m-%d')}")
             return None
 
         # If not in DB or not enough data, fetch from external sources (LIVE ONLY)
@@ -298,7 +299,8 @@ class DataManager:
                 expiries = self.trendlyne_client.get_expiry_dates(stock_id)
                 if expiries:
                     now = datetime.now()
-                    data = self.trendlyne_client.get_live_oi_data(stock_id, expiries[0], "09:15", now.strftime("%H:%M"))
+                    expiry_date = expiries[0]
+                    data = self.trendlyne_client.get_live_oi_data(stock_id, expiry_date, "09:15", now.strftime("%H:%M"))
                     if data and data.get('body', {}).get('oiData'):
                         chain = []
                         for strike_str, strike_data in data['body']['oiData'].items():
@@ -306,8 +308,11 @@ class DataManager:
                             if strike in strike_range:
                                 chain.append({
                                     "strike": strike,
+                                    "call_oi": int(strike_data.get('callOi', 0)),
+                                    "put_oi": int(strike_data.get('putOi', 0)),
                                     "call_oi_chg": int(strike_data.get('callOiChange', 0)),
-                                    "put_oi_chg": int(strike_data.get('putOiChange', 0))
+                                    "put_oi_chg": int(strike_data.get('putOiChange', 0)),
+                                    "expiry": expiry_date
                                 })
                         chain_data = pd.DataFrame(chain)
 

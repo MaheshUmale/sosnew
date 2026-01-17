@@ -44,12 +44,18 @@ def run_backtest(symbol: str, from_date: str = None, to_date: str = None):
     market_breadth = data_manager.get_market_breadth() # This is less time-sensitive
 
     # The processing pipeline
+    last_processed_date = None
+    option_chain = None
+    pcr = 1.0
+
     for timestamp, row in candles_df.iterrows():
         current_date_str = timestamp.strftime('%Y-%m-%d')
 
-        # Fetch data specific to the current candle's date
-        option_chain = data_manager.get_option_chain(symbol, date=current_date_str)
-        pcr = data_manager.get_pcr(symbol, date=current_date_str)
+        if current_date_str != last_processed_date:
+            # Fetch data specific to the current candle's date
+            option_chain = data_manager.get_option_chain(symbol, date=current_date_str)
+            pcr = data_manager.get_pcr(symbol, date=current_date_str)
+            last_processed_date = current_date_str
 
         # Create a MarketEvent from the row
         event = MarketEvent(
