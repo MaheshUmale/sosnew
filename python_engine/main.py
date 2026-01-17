@@ -9,9 +9,10 @@ from engine_config import Config
 from python_engine.core.order_orchestrator import OrderOrchestrator
 from python_engine.core.trade_logger import TradeLog
 from data_sourcing.data_manager import DataManager
+from data_sourcing.ingestion import IngestionManager
 from python_engine.utils.atr_calculator import calculate_atr
 
-def run_backtest(symbol: str, from_date: str = None, to_date: str = None):
+def run_backtest(symbol: str, from_date: str = None, to_date: str = None, auto_backfill: bool = True):
     # Load configuration
     Config.load('config.json')
     access_token = Config.get('upstox_access_token')
@@ -28,6 +29,16 @@ def run_backtest(symbol: str, from_date: str = None, to_date: str = None):
     # Fetch and prepare all data before the loop
     candles_df = data_manager.get_historical_candles(symbol, n_bars=1000, from_date=from_date, to_date=to_date)
     
+    if (candles_df is None or candles_df.empty) and auto_backfill:
+        print(f"[*] Data missing for {symbol}. Triggering automatic ingestion...")
+        ingest_mgr = IngestionManager(access_token=access_token)
+        # Default to reasonable dates if None
+        f_date = from_date or (pd.Timestamp.now() - pd.Timedelta(days=5)).strftime('%Y-%m-%d')
+        t_date = to_date or pd.Timestamp.now().strftime('%Y-%m-%d')
+        ingest_mgr.ingest_historical_data(symbol, f_date, t_date, full_options=True)
+
+        # Retry fetch
+        candles_df = data_manager.get_historical_candles(symbol, n_bars=1000, from_date=from_date, to_date=to_date)
 
     if candles_df is None or candles_df.empty:
         print("Could not fetch historical data. Aborting.")
@@ -55,6 +66,16 @@ def run_backtest(symbol: str, from_date: str = None, to_date: str = None):
             # Fetch data specific to the current candle's date
             option_chain = data_manager.get_option_chain(symbol, date=current_date_str)
             pcr = data_manager.get_pcr(symbol, date=current_date_str)
+
+            # Auto-backfill missing daily data
+            if (not option_chain or pcr == 1.0) and auto_backfill:
+                 print(f"[*] Options/PCR data missing for {current_date_str}. Triggering targeted ingestion...")
+                 ingest_mgr = IngestionManager(access_token=access_token)
+                 ingest_mgr.ingest_historical_data(symbol, current_date_str, current_date_str, full_options=True)
+                 # Retry
+                 option_chain = data_manager.get_option_chain(symbol, date=current_date_str)
+                 pcr = data_manager.get_pcr(symbol, date=current_date_str)
+
             last_processed_date = current_date_str
 
         # Create a MarketEvent from the row

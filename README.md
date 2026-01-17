@@ -54,13 +54,18 @@ python -m data_sourcing.ingestion --symbol NIFTY --from_date 2026-01-16 --to_dat
 - **Full Options:** Use the `--full-options` flag during ingestion to fetch minute-by-minute historical OI snapshots from Trendlyne (requires SmartOptions API access).
 
 #### 2. Run Backtest
-Once the data is ingested, you can run the backtest for the specified period.
+You can run a backtest for a specific period. If data is missing, the engine will automatically attempt to backfill it (requires a valid Upstox token in `config.json`).
 
 ```bash
 python run.py --mode backtest --symbol NIFTY --from-date 2026-01-12 --to-date 2026-01-16
 ```
 
 If no dates are specified, it defaults to the last 5 days.
+
+To run a strict backtest without automatic backfilling, use the `--no-backfill` flag:
+```bash
+python run.py --mode backtest --symbol NIFTY --no-backfill
+```
 
 This will run the ingested data through the engine and print any trade executions to the console.
 
