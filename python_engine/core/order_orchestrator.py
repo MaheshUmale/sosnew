@@ -18,12 +18,10 @@ class OrderOrchestrator:
 
     def on_event(self, event: MarketEvent):
         # 1. If this event IS the instrument we have a position in (e.g. the Option itself)
-        if event.symbol in self._open_positions:
-            position = self._open_positions[event.symbol]
+        # We might have multiple patterns trading the same instrument
+        positions_for_instrument = [p for p in self._open_positions.values() if p.symbol == event.symbol]
+        for position in positions_for_instrument:
             self._check_sl_tp(position, event.candle)
-            if position.trade_id not in [p.trade_id for p in self._open_positions.values()]:
-                # Position was closed
-                return
 
         # 2. If this is the underlying index, check all positions deriving from it
         # This is primarily for backtesting where we might only have underlying data events
@@ -58,8 +56,9 @@ class OrderOrchestrator:
                 trade_closed = True
 
         if trade_closed:
-            if position.symbol in self._open_positions:
-                del self._open_positions[position.symbol]
+            pos_key = f"{position.symbol}_{position.pattern_id}"
+            if pos_key in self._open_positions:
+                del self._open_positions[pos_key]
 
     def _get_atm_option_details(self, underlying_symbol, side, candle):
         # Simplify symbol prefix extraction
@@ -91,9 +90,11 @@ class OrderOrchestrator:
 
 
     def execute_trade(self, state: PatternState, definition: PatternDefinition, candle, history, prev_candle):
-        # We should not open a new position on an underlying if we already have an option position for it.
-        open_underlying_symbols = [p.underlying_symbol for p in self._open_positions.values()]
-        if state.symbol in open_underlying_symbols:
+        # Allow multiple strategies to trade the same underlying, but only one position per strategy-underlying pair
+        pos_key_prefix = f"{state.symbol}_{definition.pattern_id}"
+        # We check if this specific pattern already has an open position for this underlying
+        pattern_underlying_open = any(p.pattern_id == definition.pattern_id and p.underlying_symbol == state.symbol for p in self._open_positions.values())
+        if pattern_underlying_open:
             return
 
         self._asteval.symtable.update({
@@ -155,8 +156,8 @@ class OrderOrchestrator:
                 print(f"[OrderOrchestrator] ERROR: Could not get ATM option details for {state.symbol} at timestamp {candle.timestamp}. Skipping trade.")
                 return
 
-        if symbol_to_trade in self._open_positions:
-            # print(f"Skipping trade for {symbol_to_trade} as a position is already open.")
+        pos_key = f"{symbol_to_trade}_{definition.pattern_id}"
+        if pos_key in self._open_positions:
             return
 
         trade_id = str(uuid.uuid4())
@@ -176,6 +177,7 @@ class OrderOrchestrator:
             underlying_symbol=underlying_symbol_for_position,
             instrument_key=instrument_key_to_trade,
             symbol=symbol_to_trade,
+            pattern_id=definition.pattern_id,
             side=side,
             entry_price=entry_price,
             entry_time=candle.timestamp,
@@ -183,8 +185,8 @@ class OrderOrchestrator:
             take_profit=take_profit,
             trade_id=trade_id
         )
-        self._open_positions[symbol_to_trade] = position
-        print(f"Opened position for {symbol_to_trade} (underlying: {underlying_symbol_for_position}) at {entry_price}")
+        self._open_positions[pos_key] = position
+        print(f"Opened position for {symbol_to_trade} ({definition.pattern_id}) at {entry_price}")
 
     def _close_position(self, position: Position, exit_price: float, exit_time, outcome: TradeOutcome):
         trade = self._trade_log.get_trade(position.trade_id)

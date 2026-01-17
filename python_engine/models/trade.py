@@ -37,6 +37,7 @@ class Position:
     underlying_symbol: str
     instrument_key: str
     symbol: str
+    pattern_id: str
     side: TradeSide
     entry_price: float
     entry_time: datetime
