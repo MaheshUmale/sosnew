@@ -38,11 +38,14 @@ The engine is built with a modular, event-driven architecture. The core componen
 To run a backtest, you first need to ingest historical data into the local database. The engine in `backtest` mode strictly reads from the database to ensure data integrity and prevent leaks.
 
 #### 1. Ingest Data
-Use the `ingestion.py` script to fetch historical index candles, option chains, and calculate market stats (like PCR).
+Use the `ingestion.py` script to fetch historical index candles, option chains, and calculate market stats (like PCR). The script automatically skips dates that already have data in the database.
 
 ```bash
 # Ingest 15 days of NIFTY data
 python -m data_sourcing.ingestion --symbol NIFTY --from_date 2026-01-01 --to_date 2026-01-16
+
+# To force overwrite existing data, use the --force flag
+python -m data_sourcing.ingestion --symbol NIFTY --from_date 2026-01-16 --to_date 2026-01-16 --force
 ```
 
 #### 2. Run Backtest

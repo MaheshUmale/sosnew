@@ -59,7 +59,9 @@ class IngestionManager:
             try:
                 from backfill_trendlyne import backfill_index_volume_from_tv
                 prefix = "NIFTY" if "NIFTY" in canonical_symbol.upper() and "BANK" not in canonical_symbol.upper() else "BANKNIFTY"
-                backfill_index_volume_from_tv(self.db_manager, prefix, date_str)
+                success = backfill_index_volume_from_tv(self.db_manager, prefix, date_str)
+                if not success:
+                    print(f"    - [INFO] Index volume not available (TVDatafeed skipped or failed). Index candles will have 0 volume.")
             except Exception as e:
                 print(f"    - [WARN] TV Volume sync skipped: {e}")
 
