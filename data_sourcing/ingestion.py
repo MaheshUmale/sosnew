@@ -117,6 +117,8 @@ class IngestionManager:
 
                 # Fallback resolution via symbol construction
                 if not row['call_instrument_key'] or not row['put_instrument_key']:
+                    if not row['expiry'] or pd.isna(row['expiry']):
+                        continue
                     expiry_dt = pd.to_datetime(row['expiry'])
                     expiry_day = expiry_dt.strftime('%d')
                     expiry_month = expiry_dt.strftime('%b').upper()
@@ -132,7 +134,10 @@ class IngestionManager:
 
             for key in unique_keys:
                 if key:
-                    self.data_manager.get_historical_candles(key, from_date=date_str, to_date=date_str, mode='live')
+                    try:
+                        self.data_manager.get_historical_candles(key, from_date=date_str, to_date=date_str, mode='live')
+                    except Exception as e:
+                        print(f"      [WARN] Failed to fetch candles for {key}: {e}")
         except Exception as e:
             print(f"      [WARN] Option candles ingestion failed: {e}")
 
