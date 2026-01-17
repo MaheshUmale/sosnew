@@ -150,7 +150,7 @@ class DataManager:
 
         if mode == 'backtest':
             print(f"[DataManager] [ERROR] Historical data for {canonical_symbol} not found in DB during backtest.")
-            print(f"              Please run ingestion first: PYTHONPATH=. python data_sourcing/ingestion.py --symbol {canonical_symbol} --from_date {from_date.strftime('%Y-%m-%d')} --to_date {to_date.strftime('%Y-%m-%d')}")
+            print(f"              Please run ingestion first: python -m data_sourcing.ingestion --symbol {canonical_symbol} --from_date {from_date.strftime('%Y-%m-%d')} --to_date {to_date.strftime('%Y-%m-%d')}")
             return None
 
         # If not in DB or not enough data, fetch from external sources (LIVE ONLY)
