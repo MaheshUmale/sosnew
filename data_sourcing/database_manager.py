@@ -110,6 +110,27 @@ class DatabaseManager:
             )
         ''', commit=True)
 
+        # Migration: Ensure market_stats has call_oi and put_oi columns
+        self._ensure_market_stats_columns()
+
+    def _ensure_market_stats_columns(self):
+        """Ensures that all required columns exist in market_stats for users with older DB versions."""
+        try:
+            with self as db:
+                cursor = db.conn.cursor()
+                cursor.execute("PRAGMA table_info(market_stats)")
+                columns = [info[1] for info in cursor.fetchall()]
+
+                if 'call_oi' not in columns:
+                    print("[DatabaseManager] Migrating market_stats: adding call_oi column")
+                    db.conn.execute("ALTER TABLE market_stats ADD COLUMN call_oi REAL")
+                if 'put_oi' not in columns:
+                    print("[DatabaseManager] Migrating market_stats: adding put_oi column")
+                    db.conn.execute("ALTER TABLE market_stats ADD COLUMN put_oi REAL")
+                db.conn.commit()
+        except Exception as e:
+            print(f"[DatabaseManager] Migration failed: {e}")
+
     def store_trade(self, trade_data: dict):
         """
         Stores or updates a trade in the database.
