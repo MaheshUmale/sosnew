@@ -10,6 +10,7 @@ def main():
     parser.add_argument('--symbol', type=str, help='The symbol to run the backtest for (required for backtest mode).')
     parser.add_argument('--from-date', type=str, help='The start date for the backtest (YYYY-MM-DD).')
     parser.add_argument('--to-date', type=str, help='The end date for the backtest (YYYY-MM-DD).')
+    parser.add_argument('--no-backfill', action='store_true', help='Disable automatic data backfilling during backtest.')
 
 
     args = parser.parse_args()
@@ -20,7 +21,7 @@ def main():
         symbol = "NSE|INDEX|NIFTY" if args.symbol == "NIFTY" else ("NSE|INDEX|BANKNIFTY" if args.symbol == "BANKNIFTY" else args.symbol)
         if not symbol:
             parser.error("--symbol is required for backtest mode.")
-        run_backtest(symbol, args.from_date, args.to_date)
+        run_backtest(symbol, args.from_date, args.to_date, auto_backfill=not args.no_backfill)
     elif args.mode == 'live':
         asyncio.run(run_live())
 

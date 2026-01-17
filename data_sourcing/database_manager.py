@@ -7,6 +7,30 @@ class DatabaseManager:
         self.db_name = db_name
         self.conn = None
 
+    def _normalize_df_timestamps(self, df, column='timestamp'):
+        """Normalizes timestamps in a DataFrame to the nearest minute (seconds=00)."""
+        if df is None or df.empty or column not in df.columns:
+            return df
+        df[column] = pd.to_datetime(df[column]).dt.floor('min').dt.strftime('%Y-%m-%d %H:%M:%S')
+        return df
+
+    def _normalize_timestamp(self, ts, floor=True):
+        """Normalizes a single timestamp string or datetime object."""
+        if not ts: return ts
+        dt = pd.to_datetime(ts)
+        # If it's a date-only (00:00:00), we should treat it as start/end of day
+        if dt.hour == 0 and dt.minute == 0 and dt.second == 0:
+            if floor:
+                return dt.strftime('%Y-%m-%d 00:00:00')
+            else:
+                return dt.strftime('%Y-%m-%d 23:59:59')
+
+        if floor:
+            return dt.floor('min').strftime('%Y-%m-%d %H:%M:%S')
+        else:
+            # For end of range, we might want to include the whole minute
+            return dt.floor('min').replace(second=59).strftime('%Y-%m-%d %H:%M:%S')
+
     def __enter__(self):
         self.conn = sqlite3.connect(self.db_name)
         return self
@@ -174,7 +198,7 @@ class DatabaseManager:
             df_to_insert['interval'] = interval
 
             # Data Type Coercion and Formatting
-            df_to_insert['timestamp'] = pd.to_datetime(df_to_insert['timestamp']).dt.strftime('%Y-%m-%d %H:%M:%S')
+            df_to_insert = self._normalize_df_timestamps(df_to_insert)
             if 'oi' not in df_to_insert.columns:
                 df_to_insert['oi'] = 0
             df_to_insert['oi'] = pd.to_numeric(df_to_insert['oi'], errors='coerce').fillna(0).astype(int)
@@ -231,17 +255,8 @@ class DatabaseManager:
             instrument_key = symbol # Fallback
 
         # Ensure the date range covers the specific time if provided
-        ts = pd.to_datetime(from_date)
-        if ts.hour == 0 and ts.minute == 0 and ts.second == 0:
-             start_date_str = ts.strftime('%Y-%m-%d 00:00:00')
-        else:
-             start_date_str = ts.strftime('%Y-%m-%d %H:%M:%S')
-
-        ts_end = pd.to_datetime(to_date)
-        if ts_end.hour == 0 and ts_end.minute == 0 and ts_end.second == 0:
-             end_date_str = ts_end.strftime('%Y-%m-%d 23:59:59')
-        else:
-             end_date_str = ts_end.strftime('%Y-%m-%d %H:%M:%S')
+        start_date_str = self._normalize_timestamp(from_date)
+        end_date_str = self._normalize_timestamp(to_date, floor=False)
 
         with self as db:
             query = """
@@ -264,8 +279,8 @@ class DatabaseManager:
                      target_date = datetime.strptime(date_str, '%Y-%m-%d')
                      df_to_insert['timestamp'] = target_date.strftime('%Y-%m-%d %H:%M:%S')
 
-                # Ensure timestamp is string for DB comparison
-                df_to_insert['timestamp'] = pd.to_datetime(df_to_insert['timestamp']).dt.strftime('%Y-%m-%d %H:%M:%S')
+                # Ensure timestamp is string for DB comparison and normalized
+                df_to_insert = self._normalize_df_timestamps(df_to_insert)
 
                 # Use temp table for merging
                 df_to_insert.to_sql('temp_option_chain', db.conn, if_exists='replace', index=False)
@@ -331,7 +346,7 @@ class DatabaseManager:
 
             # Ensure timestamp format
             if 'timestamp' in df_to_insert.columns:
-                df_to_insert['timestamp'] = pd.to_datetime(df_to_insert['timestamp']).dt.strftime('%Y-%m-%d %H:%M:%S')
+                df_to_insert = self._normalize_df_timestamps(df_to_insert)
 
             try:
                 df_to_insert.to_sql('temp_market_stats', db.conn, if_exists='replace', index=False)
@@ -363,8 +378,8 @@ class DatabaseManager:
         """
         Retrieves market statistics for a given symbol and date range.
         """
-        start_date_str = pd.to_datetime(from_date).strftime('%Y-%m-%d 00:00:00')
-        end_date_str = pd.to_datetime(to_date).strftime('%Y-%m-%d 23:59:59')
+        start_date_str = self._normalize_timestamp(from_date)
+        end_date_str = self._normalize_timestamp(to_date, floor=False)
 
         with self as db:
             query = """
