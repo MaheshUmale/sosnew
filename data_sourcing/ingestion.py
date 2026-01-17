@@ -217,33 +217,36 @@ class IngestionManager:
 
                 # Enrichment: Update Index Candles with proxy OI (Sum of all options OI)
                 try:
-                    # Clean/Reset existing OI for this day first to be "clean"
                     instrument_key = SymbolMaster.get_upstox_key(symbol)
+                    if not instrument_key:
+                        print(f"      [WARN] Could not find instrument key for {symbol} to enrich OI.")
+                        return
+
                     with self.db_manager as db:
-                        db.conn.execute("UPDATE historical_candles SET oi = 0 WHERE symbol = ? AND DATE(timestamp) = ?", (instrument_key, date_str))
+                        # Batch update Index Candles with summed OI from market_stats
+                        # This works because both are now normalized to :00 seconds
+                        enrich_query = """
+                            UPDATE historical_candles
+                            SET oi = (
+                                SELECT CAST(m.call_oi + m.put_oi AS INTEGER)
+                                FROM market_stats m
+                                WHERE m.symbol = ? AND m.timestamp = historical_candles.timestamp
+                            )
+                            WHERE symbol = ? AND DATE(timestamp) = ? AND EXISTS (
+                                SELECT 1 FROM market_stats m2
+                                WHERE m2.symbol = ? AND m2.timestamp = historical_candles.timestamp
+                            )
+                        """
+                        db.conn.execute(enrich_query, (symbol, instrument_key, date_str, symbol))
 
-                        # If we only have one snapshot (e.g. daily), apply it to all candles of that day
-                        if len(stats_df) == 1:
-                            total_oi = int(stats_df['call_oi'].iloc[0] + stats_df['put_oi'].iloc[0])
-                            db.conn.execute("UPDATE historical_candles SET oi = ? WHERE symbol = ? AND DATE(timestamp) = ?",
-                                          (total_oi, instrument_key, date_str))
-                            print(f"      [OK] Enriched Index Candles with proxy OI (Single Snapshot).")
-                        else:
-                            # If we have multiple snapshots, try to match by minute
-                            # But also provide a fallback for minutes without exact match
-                            for ts, group in stats_df.groupby('timestamp'):
-                                ts_str = ts.strftime('%Y-%m-%d %H:%M:%S')
-                                total_oi = int(group['call_oi'].iloc[0] + group['put_oi'].iloc[0])
+                        # Fallback: If only a few snapshots exist (e.g. daily), propagate last known OI to the whole day
+                        # only for rows that still have 0 OI.
+                        last_oi = int(stats_df['call_oi'].iloc[-1] + stats_df['put_oi'].iloc[-1])
+                        db.conn.execute("UPDATE historical_candles SET oi = ? WHERE symbol = ? AND DATE(timestamp) = ? AND (oi = 0 OR oi IS NULL)",
+                                      (last_oi, instrument_key, date_str))
 
-                                db.conn.execute("UPDATE historical_candles SET oi = ? WHERE symbol = ? AND timestamp = ?",
-                                              (total_oi, instrument_key, ts_str))
-
-                            # Fallback: fill any remaining 0s with the nearest available value or the last snapshot
-                            last_oi = int(stats_df['call_oi'].iloc[-1] + stats_df['put_oi'].iloc[-1])
-                            db.conn.execute("UPDATE historical_candles SET oi = ? WHERE symbol = ? AND DATE(timestamp) = ? AND oi = 0",
-                                          (last_oi, instrument_key, date_str))
-                            print(f"      [OK] Enriched Index Candles with proxy OI (Multi-Snapshot).")
                         db.conn.commit()
+                        print(f"      [OK] Enriched Index Candles for {symbol} with Proxy OI (Total Options OI).")
                 except Exception as e:
                     print(f"      [WARN] Could not enrich Index Candles with OI: {e}")
 
