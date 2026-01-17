@@ -42,7 +42,7 @@ Use the `ingestion.py` script to fetch historical index candles, option chains, 
 
 ```bash
 # Ingest 15 days of NIFTY data
-PYTHONPATH=. python data_sourcing/ingestion.py --symbol NIFTY --from_date 2026-01-01 --to_date 2026-01-16
+python -m data_sourcing.ingestion --symbol NIFTY --from_date 2026-01-01 --to_date 2026-01-16
 ```
 
 #### 2. Run Backtest
