@@ -142,11 +142,15 @@ class DataManager:
         # First, try to get data from the local database
         local_data = self.db_manager.get_historical_candles(canonical_symbol, exchange, interval, from_date, to_date)
         if local_data is not None and not local_data.empty:
-            print(f"Loaded {len(local_data)} candles for {canonical_symbol} from local DB.")
+            # print(f"Loaded {len(local_data)} candles for {canonical_symbol} from local DB.")
             if from_date:
-                return local_data
+                # Still need to sort because DB might return DESC
+                local_data['timestamp_dt'] = pd.to_datetime(local_data['timestamp'])
+                return local_data.sort_values('timestamp_dt')
             if len(local_data) >= n_bars:
-                return local_data.tail(n_bars)
+                local_data['timestamp_dt'] = pd.to_datetime(local_data['timestamp'])
+                return local_data.sort_values('timestamp_dt').tail(n_bars)
+            return local_data.sort_values('timestamp')
 
         if mode == 'backtest':
             print(f"[DataManager] [ERROR] Historical data for {canonical_symbol} not found in DB during backtest.")
@@ -375,15 +379,18 @@ class DataManager:
 
     def get_historical_candle_for_timestamp(self, symbol, timestamp):
         dt_object = datetime.fromtimestamp(timestamp)
-        from_date = dt_object - timedelta(minutes=1)
-        to_date = dt_object + timedelta(minutes=1)
+        # Search in a tight window around the timestamp
+        from_date = dt_object - timedelta(seconds=30)
+        to_date = dt_object + timedelta(seconds=30)
 
         # Use the existing method to get a range of candles, expecting only one
-        candles_df = self.get_historical_candles(symbol, n_bars=1, from_date=from_date, to_date=to_date)
+        candles_df = self.get_historical_candles(symbol, n_bars=10, from_date=from_date, to_date=to_date)
 
         if candles_df is not None and not candles_df.empty:
-            # Since n_bars=1 and the time window is tight, we can assume the last row is the one we want
-            candle_row = candles_df.iloc[-1]
+            # Find the candle with the closest timestamp
+            candles_df['timestamp_dt'] = pd.to_datetime(candles_df['timestamp'])
+            candles_df['diff'] = (candles_df['timestamp_dt'] - dt_object).abs()
+            candle_row = candles_df.sort_values('diff').iloc[0]
             # Ensure timestamp is a datetime object
             ts = candle_row['timestamp']
             if isinstance(ts, str):

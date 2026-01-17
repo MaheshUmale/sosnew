@@ -188,9 +188,18 @@ class DatabaseManager:
         if not instrument_key:
             instrument_key = symbol # Fallback
 
-        # Ensure the date range covers the full day(s) for the database query.
-        start_date_str = pd.to_datetime(from_date).strftime('%Y-%m-%d 00:00:00')
-        end_date_str = pd.to_datetime(to_date).strftime('%Y-%m-%d 23:59:59')
+        # Ensure the date range covers the specific time if provided
+        ts = pd.to_datetime(from_date)
+        if ts.hour == 0 and ts.minute == 0 and ts.second == 0:
+             start_date_str = ts.strftime('%Y-%m-%d 00:00:00')
+        else:
+             start_date_str = ts.strftime('%Y-%m-%d %H:%M:%S')
+
+        ts_end = pd.to_datetime(to_date)
+        if ts_end.hour == 0 and ts_end.minute == 0 and ts_end.second == 0:
+             end_date_str = ts_end.strftime('%Y-%m-%d 23:59:59')
+        else:
+             end_date_str = ts_end.strftime('%Y-%m-%d %H:%M:%S')
 
         with self as db:
             query = """
