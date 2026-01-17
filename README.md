@@ -20,7 +20,7 @@ The engine is built with a modular, event-driven architecture. The core componen
 1.  **Clone the Repository:**
     ```bash
     git clone <repository-url>
-    cd Scalping-Orchestration-System-SOS-
+    cd <repository-directory>
     ```
 
 2.  **Install Dependencies:**
