@@ -122,14 +122,22 @@ class DataManager:
         
         # Ensure from_date and to_date are datetime objects
         if isinstance(from_date, str):
-            from_date = datetime.strptime(from_date, '%Y-%m-%d')
+            try:
+                from_date = datetime.strptime(from_date, '%Y-%m-%d %H:%M:%S')
+            except ValueError:
+                from_date = datetime.strptime(from_date, '%Y-%m-%d')
         if isinstance(to_date, str):
-            to_date = datetime.strptime(to_date, '%Y-%m-%d')
+            try:
+                to_date = datetime.strptime(to_date, '%Y-%m-%d %H:%M:%S')
+            except ValueError:
+                to_date = datetime.strptime(to_date, '%Y-%m-%d')
             
         if to_date is None:
             to_date = datetime.now()
         if from_date is None:
             from_date = to_date - timedelta(days=5)
+
+        print(f"[DataManager] DB Query: Symbol={canonical_symbol}, From={from_date}, To={to_date}")
 
         # First, try to get data from the local database
         local_data = self.db_manager.get_historical_candles(canonical_symbol, exchange, interval, from_date, to_date)
@@ -391,6 +399,7 @@ class DataManager:
         Finds the ATM option instrument key by constructing the symbol from historical
         option chain data and resolving it.
         """
+        canonical_symbol = SymbolMaster.get_canonical_ticker(underlying_symbol)
         symbol_prefix = "BANKNIFTY" if "BANK" in underlying_symbol.upper() else "NIFTY"
         dt_object = datetime.fromtimestamp(timestamp)
         datetime_str = dt_object.strftime('%Y-%m-%d %H:%M:%S')
@@ -404,7 +413,7 @@ class DataManager:
                     ORDER BY timestamp DESC
                     LIMIT 500
                 """ # Limit to nearest 500 to capture full chain even with duplicates
-                df = pd.read_sql_query(query, db.conn, params=(symbol_prefix, datetime_str))
+                df = pd.read_sql_query(query, db.conn, params=(canonical_symbol, datetime_str))
 
             if df.empty:
                 print(f"No historical option chain data found for {symbol_prefix} at or before {datetime_str}")
