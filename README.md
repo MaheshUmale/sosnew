@@ -48,6 +48,11 @@ python -m data_sourcing.ingestion --symbol NIFTY --from_date 2026-01-01 --to_dat
 python -m data_sourcing.ingestion --symbol NIFTY --from_date 2026-01-16 --to_date 2026-01-16 --force
 ```
 
+**Data Enrichment Note:**
+- **Index Volume:** To fetch accurate volume for NIFTY/BANKNIFTY, ensure `tvdatafeed` is installed and a Chrome browser is available.
+- **Index OI:** The script enriches index candles with a proxy Open Interest calculated from the sum of all associated options' OI.
+- **Full Options:** Use the `--full-options` flag during ingestion to fetch minute-by-minute historical OI snapshots from Trendlyne (requires SmartOptions API access).
+
 #### 2. Run Backtest
 Once the data is ingested, you can run the backtest for the specified period.
 

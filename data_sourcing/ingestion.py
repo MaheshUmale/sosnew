@@ -47,11 +47,17 @@ class IngestionManager:
             if not force:
                 existing_candles = self.db_manager.get_historical_candles(canonical_symbol, 'NSE', '1m', date_str, date_str)
                 if existing_candles is not None and not existing_candles.empty:
-                    # Check if stats also exist
+                    # Check if stats also exist AND OI is enriched (non-zero)
                     existing_stats = self.db_manager.get_market_stats(canonical_symbol, date_str, date_str)
-                    if not existing_stats.empty:
-                        print(f"[*] Skipping {date_str} - Data already exists. Use --force to overwrite.")
+
+                    # Also check if index candles have OI > 0
+                    has_oi = (existing_candles['oi'] > 0).any()
+
+                    if not existing_stats.empty and has_oi:
+                        print(f"[*] Skipping {date_str} - Data already exists and is enriched. Use --force to overwrite.")
                         continue
+                    else:
+                        print(f"[*] Data for {date_str} exists but is incomplete (missing OI/Stats). Re-processing...")
 
             print(f"[*] Processing {date_str}...")
 
@@ -169,17 +175,29 @@ class IngestionManager:
 
             df['timestamp'] = pd.to_datetime(df['timestamp'])
 
+            # Fill NaNs in OI columns
+            df['call_oi'] = pd.to_numeric(df['call_oi'], errors='coerce').fillna(0)
+            df['put_oi'] = pd.to_numeric(df['put_oi'], errors='coerce').fillna(0)
+
             # Group by timestamp to calculate PCR per minute
             stats_list = []
             for ts, group in df.groupby('timestamp'):
                 total_call_oi = group['call_oi'].sum()
                 total_put_oi = group['put_oi'].sum()
 
-                pcr = round(total_put_oi / total_call_oi, 2) if total_call_oi > 0 else 1.0
+                pcr = round(total_put_oi / total_call_oi, 4) if total_call_oi > 0 else 1.0
 
-                # Simple OI wall logic
-                oi_wall_above = group.loc[group['call_oi'].idxmax()]['strike'] if not group.empty else 0
-                oi_wall_below = group.loc[group['put_oi'].idxmax()]['strike'] if not group.empty else 0
+                # Simple OI wall logic - find strike with max OI
+                # Use idxmax only if there is non-zero OI, otherwise default to 0
+                if not group.empty and total_call_oi > 0:
+                    oi_wall_above = group.loc[group['call_oi'].idxmax()]['strike']
+                else:
+                    oi_wall_above = 0
+
+                if not group.empty and total_put_oi > 0:
+                    oi_wall_below = group.loc[group['put_oi'].idxmax()]['strike']
+                else:
+                    oi_wall_below = 0
 
                 stats_list.append({
                     'timestamp': ts,
@@ -199,17 +217,33 @@ class IngestionManager:
 
                 # Enrichment: Update Index Candles with proxy OI (Sum of all options OI)
                 try:
+                    # Clean/Reset existing OI for this day first to be "clean"
+                    instrument_key = SymbolMaster.get_upstox_key(symbol)
                     with self.db_manager as db:
-                        for ts, group in stats_df.groupby('timestamp'):
-                            ts_str = ts.strftime('%Y-%m-%d %H:%M:%S')
-                            total_oi = int(group['call_oi'].iloc[0] + group['put_oi'].iloc[0])
+                        db.conn.execute("UPDATE historical_candles SET oi = 0 WHERE symbol = ? AND DATE(timestamp) = ?", (instrument_key, date_str))
 
-                            # Use SymbolMaster to get the exact key for the index
-                            instrument_key = SymbolMaster.get_upstox_key(symbol)
-                            db.conn.execute("UPDATE historical_candles SET oi = ? WHERE symbol = ? AND timestamp = ?",
-                                          (total_oi, instrument_key, ts_str))
+                        # If we only have one snapshot (e.g. daily), apply it to all candles of that day
+                        if len(stats_df) == 1:
+                            total_oi = int(stats_df['call_oi'].iloc[0] + stats_df['put_oi'].iloc[0])
+                            db.conn.execute("UPDATE historical_candles SET oi = ? WHERE symbol = ? AND DATE(timestamp) = ?",
+                                          (total_oi, instrument_key, date_str))
+                            print(f"      [OK] Enriched Index Candles with proxy OI (Single Snapshot).")
+                        else:
+                            # If we have multiple snapshots, try to match by minute
+                            # But also provide a fallback for minutes without exact match
+                            for ts, group in stats_df.groupby('timestamp'):
+                                ts_str = ts.strftime('%Y-%m-%d %H:%M:%S')
+                                total_oi = int(group['call_oi'].iloc[0] + group['put_oi'].iloc[0])
+
+                                db.conn.execute("UPDATE historical_candles SET oi = ? WHERE symbol = ? AND timestamp = ?",
+                                              (total_oi, instrument_key, ts_str))
+
+                            # Fallback: fill any remaining 0s with the nearest available value or the last snapshot
+                            last_oi = int(stats_df['call_oi'].iloc[-1] + stats_df['put_oi'].iloc[-1])
+                            db.conn.execute("UPDATE historical_candles SET oi = ? WHERE symbol = ? AND DATE(timestamp) = ? AND oi = 0",
+                                          (last_oi, instrument_key, date_str))
+                            print(f"      [OK] Enriched Index Candles with proxy OI (Multi-Snapshot).")
                         db.conn.commit()
-                        print(f"      [OK] Enriched Index Candles with proxy OI.")
                 except Exception as e:
                     print(f"      [WARN] Could not enrich Index Candles with OI: {e}")
 

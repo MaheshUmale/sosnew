@@ -67,6 +67,8 @@ def backfill_from_trendlyne(db_manager, symbol, stock_id, expiry_date_str, times
         'minTime': "09:15",
         'maxTime': timestamp_snapshot
     }
+    if trading_date_override:
+        params['tradingDate'] = trading_date_override
 
     try:
         response = requests.get(url, params=params, timeout=10)
