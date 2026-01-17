@@ -68,9 +68,12 @@ class NSEClient:
         headers = self.headers.copy()
         headers["Referer"] = f"{self.base_url}/resources/exchange-communication-holidays"
         self.session.headers.update(headers)
-        data = self._make_get_request(url)
-        if data and 'trading' in data:
-            return [h['tradingDate'] for h in data['trading']]
+        try:
+            data = self._make_get_request(url)
+            if data and 'trading' in data:
+                return [h['tradingDate'] for h in data['trading']]
+        except Exception as e:
+            print(f"[NSE] Holiday fetch error: {e}")
         return []
 
     def get_indices(self):

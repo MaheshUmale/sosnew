@@ -169,23 +169,31 @@ class DatabaseManager:
                 # Use to_sql with a temporary table for robust insertion
                 df_to_insert.to_sql('temp_historical_candles', db.conn, if_exists='replace', index=False)
 
-                # Use INSERT INTO ... ON CONFLICT to merge data and protect enriched columns (OI and Volume)
-                # This ensures that if we have non-zero OI/Volume in the main table,
-                # we don't overwrite it with 0s from a fresh (unenriched) candle fetch.
-                cols_to_update = [c for c in table_cols if c not in ['symbol', 'exchange', 'interval', 'timestamp']]
-                update_set = ", ".join([
-                    f"{col} = CASE WHEN EXCLUDED.{col} > 0 THEN EXCLUDED.{col} ELSE historical_candles.{col} END"
-                    if col in ['volume', 'oi'] else f"{col} = EXCLUDED.{col}"
-                    for col in cols_to_update
-                ])
-
-                merge_query = f"""
-                    INSERT INTO historical_candles ({', '.join(table_cols)})
-                    SELECT {', '.join(table_cols)} FROM temp_historical_candles
-                    ON CONFLICT(symbol, exchange, interval, timestamp) DO UPDATE SET
-                    {update_set}
+                # Compatible Upsert Pattern (Works on SQLite < 3.24)
+                # 1. Update existing rows with data from temp table
+                # We protect OI and Volume by only updating them if the new value is > 0
+                update_query = f"""
+                    UPDATE historical_candles
+                    SET
+                        open = (SELECT t.open FROM temp_historical_candles t WHERE t.symbol = historical_candles.symbol AND t.exchange = historical_candles.exchange AND t.interval = historical_candles.interval AND t.timestamp = historical_candles.timestamp),
+                        high = (SELECT t.high FROM temp_historical_candles t WHERE t.symbol = historical_candles.symbol AND t.exchange = historical_candles.exchange AND t.interval = historical_candles.interval AND t.timestamp = historical_candles.timestamp),
+                        low = (SELECT t.low FROM temp_historical_candles t WHERE t.symbol = historical_candles.symbol AND t.exchange = historical_candles.exchange AND t.interval = historical_candles.interval AND t.timestamp = historical_candles.timestamp),
+                        close = (SELECT t.close FROM temp_historical_candles t WHERE t.symbol = historical_candles.symbol AND t.exchange = historical_candles.exchange AND t.interval = historical_candles.interval AND t.timestamp = historical_candles.timestamp),
+                        volume = COALESCE((SELECT t.volume FROM temp_historical_candles t WHERE t.symbol = historical_candles.symbol AND t.exchange = historical_candles.exchange AND t.interval = historical_candles.interval AND t.timestamp = historical_candles.timestamp AND t.volume > 0), historical_candles.volume),
+                        oi = COALESCE((SELECT t.oi FROM temp_historical_candles t WHERE t.symbol = historical_candles.symbol AND t.exchange = historical_candles.exchange AND t.interval = historical_candles.interval AND t.timestamp = historical_candles.timestamp AND t.oi > 0), historical_candles.oi)
+                    WHERE EXISTS (
+                        SELECT 1 FROM temp_historical_candles t
+                        WHERE t.symbol = historical_candles.symbol AND t.exchange = historical_candles.exchange AND t.interval = historical_candles.interval AND t.timestamp = historical_candles.timestamp
+                    )
                 """
-                db.conn.execute(merge_query)
+                db.conn.execute(update_query)
+
+                # 2. Insert new rows that don't exist yet
+                insert_query = f"""
+                    INSERT OR IGNORE INTO historical_candles ({', '.join(table_cols)})
+                    SELECT {', '.join(table_cols)} FROM temp_historical_candles
+                """
+                db.conn.execute(insert_query)
                 db.conn.commit()
 
             except Exception as e:
@@ -238,17 +246,25 @@ class DatabaseManager:
                 # Ensure timestamp is string for DB comparison
                 df_to_insert['timestamp'] = pd.to_datetime(df_to_insert['timestamp']).dt.strftime('%Y-%m-%d %H:%M:%S')
 
-                # Use temp table for INSERT OR REPLACE
+                # Use temp table for merging
                 df_to_insert.to_sql('temp_option_chain', db.conn, if_exists='replace', index=False)
 
                 cols = ['symbol', 'timestamp', 'strike', 'expiry', 'call_oi_chg', 'put_oi_chg', 'call_instrument_key', 'put_instrument_key', 'call_oi', 'put_oi']
                 actual_cols = [c for c in cols if c in df_to_insert.columns]
 
-                merge_query = f"""
-                    INSERT OR REPLACE INTO option_chain_data ({', '.join(actual_cols)})
+                # Compatible Upsert for option_chain_data
+                update_query = f"""
+                    UPDATE option_chain_data
+                    SET {", ".join([f"{c} = (SELECT t.{c} FROM temp_option_chain t WHERE t.symbol = option_chain_data.symbol AND t.timestamp = option_chain_data.timestamp AND t.strike = option_chain_data.strike)" for c in actual_cols if c not in ['symbol', 'timestamp', 'strike']])}
+                    WHERE EXISTS (SELECT 1 FROM temp_option_chain t WHERE t.symbol = option_chain_data.symbol AND t.timestamp = option_chain_data.timestamp AND t.strike = option_chain_data.strike)
+                """
+                db.conn.execute(update_query)
+
+                insert_query = f"""
+                    INSERT OR IGNORE INTO option_chain_data ({', '.join(actual_cols)})
                     SELECT {', '.join(actual_cols)} FROM temp_option_chain
                 """
-                db.conn.execute(merge_query)
+                db.conn.execute(insert_query)
                 db.conn.commit()
                 # print(f"[DatabaseManager] Stored {len(df_to_insert)} rows into option_chain_data for {symbol}")
             except Exception as e:
@@ -303,11 +319,18 @@ class DatabaseManager:
                 # filter columns that exist in df
                 actual_cols = [c for c in cols if c in df_to_insert.columns]
 
-                merge_query = f"""
-                    INSERT OR REPLACE INTO market_stats ({', '.join(actual_cols)})
+                update_query = f"""
+                    UPDATE market_stats
+                    SET {", ".join([f"{c} = (SELECT t.{c} FROM temp_market_stats t WHERE t.symbol = market_stats.symbol AND t.timestamp = market_stats.timestamp)" for c in actual_cols if c not in ['symbol', 'timestamp']])}
+                    WHERE EXISTS (SELECT 1 FROM temp_market_stats t WHERE t.symbol = market_stats.symbol AND t.timestamp = market_stats.timestamp)
+                """
+                db.conn.execute(update_query)
+
+                insert_query = f"""
+                    INSERT OR IGNORE INTO market_stats ({', '.join(actual_cols)})
                     SELECT {', '.join(actual_cols)} FROM temp_market_stats
                 """
-                db.conn.execute(merge_query)
+                db.conn.execute(insert_query)
                 db.conn.commit()
             except Exception as e:
                 print(f"Error storing market stats for {symbol}: {e}")
