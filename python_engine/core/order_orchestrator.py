@@ -126,6 +126,9 @@ class OrderOrchestrator:
         instrument_key_to_trade = symbol_to_trade # Default to the underlying
 
         if is_index:
+            # SAFETY CHECK: Ensure we are not accidentally trading the index itself if we expect options
+            # If the entry price is > 5000, it's almost certainly the index spot price, not a Nifty option price.
+            # (BankNifty options can be expensive but usually < 3000-4000)
             print(f"[OrderOrchestrator] Resolving ATM option for {state.symbol} ({original_side})...")
             option_symbol, option_price, option_instrument_key = self._get_atm_option_details(state.symbol, original_side, candle)
             print(f"[OrderOrchestrator] Result: Symbol={option_symbol}, Price={option_price}, Key={option_instrument_key}")
@@ -151,6 +154,9 @@ class OrderOrchestrator:
                 take_profit = option_price + (price_difference_tp * delta)
 
                 entry_price = option_price
+
+                if entry_price > 5000 and "NIFTY" in state.symbol.upper():
+                     print(f"[OrderOrchestrator] WARNING: Option price ({entry_price}) looks like a spot price! Check data sourcing.")
             else:
                 # If we can't get option details, we can't place the trade.
                 print(f"[OrderOrchestrator] ERROR: Could not get ATM option details for {state.symbol} at timestamp {candle.timestamp}. Skipping trade.")

@@ -86,6 +86,8 @@ class DatabaseManager:
                 declines INTEGER,
                 oi_wall_above REAL,
                 oi_wall_below REAL,
+                call_oi REAL,
+                put_oi REAL,
                 PRIMARY KEY (symbol, timestamp)
             )
         ''', commit=True)
@@ -284,7 +286,7 @@ class DatabaseManager:
             try:
                 df_to_insert.to_sql('temp_market_stats', db.conn, if_exists='replace', index=False)
 
-                cols = ['symbol', 'timestamp', 'pcr', 'pcr_velocity', 'advances', 'declines', 'oi_wall_above', 'oi_wall_below']
+                cols = ['symbol', 'timestamp', 'pcr', 'pcr_velocity', 'advances', 'declines', 'oi_wall_above', 'oi_wall_below', 'call_oi', 'put_oi']
                 # filter columns that exist in df
                 actual_cols = [c for c in cols if c in df_to_insert.columns]
 
