@@ -135,6 +135,12 @@ class OrderOrchestrator:
             print(f"[OrderOrchestrator] Result: Symbol={option_symbol}, Price={option_price}, Key={option_instrument_key}")
 
             if option_symbol and option_price and option_instrument_key:
+                # IMPORTANT: Safety check to ensure we didn't accidentally resolve the index itself
+                index_key = SymbolMaster.get_upstox_key(state.symbol)
+                if option_instrument_key == index_key:
+                    print(f"[OrderOrchestrator] ERROR: Resolved option key {option_instrument_key} matches index key! Skipping trade.")
+                    return
+
                 # For a SELL signal on the index, we BUY a Put option.
                 # For a BUY signal on the index, we BUY a Call option.
                 # In both cases, the trade side on the option is BUY.
@@ -142,22 +148,20 @@ class OrderOrchestrator:
 
                 symbol_to_trade = option_symbol
                 instrument_key_to_trade = option_instrument_key
+                entry_price = option_price
 
                 # We need a simple way to estimate the option's SL/TP from the index's SL/TP.
                 # Using a fixed delta is a common approximation.
                 delta = self._data_manager.get_option_delta(symbol_to_trade)
                 price_difference_sl = abs(spot_entry_price - spot_stop_loss)
                 price_difference_tp = abs(spot_take_profit - spot_entry_price)
-                print(f"[OrderOrchestrator] DEBUG: Spot Entry={spot_entry_price}, Spot SL={spot_stop_loss}, Spot TP={spot_take_profit}, Delta={delta}, PriceDiffTP={price_difference_tp}, ATR={candle.atr}")
+
+                print(f"[OrderOrchestrator] Option Trade: {symbol_to_trade} @ {entry_price}")
+                print(f"      Derived from Spot: {state.symbol} @ {spot_entry_price}")
 
                 # For BUY side (on Calls and Puts), SL is below and TP is above.
-                stop_loss = option_price - (price_difference_sl * delta)
-                take_profit = option_price + (price_difference_tp * delta)
-
-                entry_price = option_price
-
-                if entry_price > 5000 and "NIFTY" in state.symbol.upper():
-                     print(f"[OrderOrchestrator] WARNING: Option price ({entry_price}) looks like a spot price! Check data sourcing.")
+                stop_loss = entry_price - (price_difference_sl * delta)
+                take_profit = entry_price + (price_difference_tp * delta)
             else:
                 # If we can't get option details, we can't place the trade.
                 print(f"[OrderOrchestrator] ERROR: Could not get ATM option details for {state.symbol} at timestamp {candle.timestamp}. Skipping trade.")
