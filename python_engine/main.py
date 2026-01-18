@@ -123,8 +123,11 @@ def _check_exits(trade_log, current_time, current_price):
         entry_price = trade['entry_price']
         entry_time = pd.to_datetime(trade['entry_time'])
         side = trade['side']
-        sl_price = trade['sl_price']
-        tp_price = trade['tp_price']
+        sl_price = trade.get('sl_price')
+        tp_price = trade.get('tp_price')
+
+        if tp_price is None or entry_price is None:
+            continue
 
         # 1. Trailing SL (Move to Break-even at 50% TP)
         target_diff = abs(tp_price - entry_price)
