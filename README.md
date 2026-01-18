@@ -35,30 +35,30 @@ The engine is built with a modular, event-driven architecture. The core componen
 
 ### Backtesting
 
-To run a backtest, you first need to ingest historical data into the local database. The engine in `backtest` mode strictly reads from the database to ensure data integrity and prevent leaks.
+To run a backtest, the engine strictly reads from a local SQLite database (`sos_master_data.db`) to ensure data integrity and prevent look-ahead bias.
 
-#### 1. Ingest Data
-Use the `ingestion.py` script to fetch historical index candles, option chains, and calculate market stats (like PCR). The script automatically skips dates that already have data in the database.
-
-```bash
-# Ingest 15 days of NIFTY data
-python -m data_sourcing.ingestion --symbol NIFTY --from_date 2026-01-01 --to_date 2026-01-16
-
-# To force overwrite existing data, use the --force flag
-python -m data_sourcing.ingestion --symbol NIFTY --from_date 2026-01-16 --to_date 2026-01-16 --force
-```
-
-**Data Enrichment Note:**
-- **Index Volume:** To fetch accurate volume for NIFTY/BANKNIFTY, ensure `tvdatafeed` is installed and a Chrome browser is available.
-- **Index OI:** The script enriches index candles with a proxy Open Interest calculated from the sum of all associated options' OI.
-- **Full Options:** Use the `--full-options` flag during ingestion to fetch minute-by-minute historical OI snapshots from Trendlyne (requires SmartOptions API access).
-
-#### 2. Run Backtest
-You can run a backtest for a specific period. If data is missing, the engine will automatically attempt to backfill it (requires a valid Upstox token in `config.json`).
+#### 🚀 Quick Start (One-Command Flow)
+The engine now supports **automatic backfilling**. If you run a backtest for a date range that is missing from your database, SOS will automatically trigger the ingestion process.
 
 ```bash
+# This command will check for data, ingest if missing, and then run the backtest
 python run.py --mode backtest --symbol NIFTY --from-date 2026-01-12 --to-date 2026-01-16
 ```
+
+#### 📊 Manual Data Ingestion
+For fine-grained control or bulk loading, use the `ingestion.py` script. It consolidates index candles, option chains, and market statistics (PCR) into a single optimized process.
+
+```bash
+# Ingest 15 days of NIFTY data (skips existing data)
+python -m data_sourcing.ingestion --symbol NIFTY --from_date 2026-01-01 --to_date 2026-01-16
+
+# To force overwrite or re-enrich existing data, use the --force flag
+python -m data_sourcing.ingestion --symbol NIFTY --from_date 2026-01-16 --to_date 2026-01-16 --force --full-options
+```
+
+**Advanced Ingestion Flags:**
+- `--full-options`: Fetches 1-minute historical OI snapshots from Trendlyne (recommended for accurate PCR analysis).
+- `--force`: Re-processes the date, ensuring all enrichment steps (OI summing, volume sync) are re-run.
 
 If no dates are specified, it defaults to the last 5 days.
 
@@ -104,6 +104,7 @@ This script will check all the `.json` files in the `strategies` directory again
 The engine uses a centralized `SymbolMaster` to handle the conversion between human-readable tickers (e.g., `NSE|INDEX|NIFTY`) and Upstox-specific instrument keys.
 
 - **Canonical Format:** The internal system uses `NSE|INDEX|NIFTY` and `NSE|INDEX|BANKNIFTY`.
+- **Data Synchronization:** To ensure consistent joins between Index candles, Option chains, and PCR stats, all timestamps are **normalized to the minute** (seconds = 00) during ingestion. This prevents "missing data" errors caused by slight millisecond drifts in API responses.
 - **Live Data Mapping:** In live mode, incoming numeric instrument keys from Upstox are automatically mapped back to these canonical tickers to ensure consistency with strategy evaluation and database storage.
 - **Dynamic F&O Subscription:** For index trading, the system automatically resolves and subscribes to the relevant ATM/OTM/ITM Call and Put options based on the current spot price of the underlying index.
 
@@ -121,10 +122,15 @@ If all your strategy files are valid, you will see a message saying "All strateg
 
 ## Recent Updates (Jan 2026)
 
-### Data Integrity & Leak Prevention
-- **Optimized Data Fetching**: critical algorithms like `get_atm_option_details` now accept `spot_price` injection to prevent redundant API calls and potential data leaks (fetching "future" data in backtests or stale data in live).
-- **Volume Data Augmentation**: The system now seamlessly integrates `tvDatafeed` to fetch accurate volume data for NIFTY and BANKNIFTY indices, which is often missing or zeroed out in standard feeds.
-- **Robust Symbol Resolution**: `instrument_loader.py` and `SymbolMaster` have been aligned to correctly parse and cache NSE F&O instrument keys (from `NSE.json.gz`), ensuring reliable Option Chain resolution.
+### 🛠️ Robust Infrastructure & Data Sync
+- **Timestamp Normalization**: Implemented minute-level normalization across all database tables. This ensures that Index candles and Option snapshots are perfectly synchronized, fixing the "spread data" issue.
+- **Proxy OI Enrichment**: Since index candles often lack Open Interest (OI), the system now automatically enriches index records with a "Proxy OI" calculated as the sum of all associated options' OI for that specific minute.
+- **SQLite Compatibility**: Replaced modern `UPSERT` syntax with a compatible `UPDATE` + `INSERT OR IGNORE` pattern, ensuring the engine runs smoothly on older versions of SQLite (common in many Python environments).
+
+### 📈 Backtest Enhancements
+- **Automatic Backfilling**: The `run.py --mode backtest` command now detects missing data and triggers `IngestionManager` automatically, providing a "one-command" setup for new users.
+- **Realistic Option Pricing**: Fixed a critical bug in the order orchestrator where index spot prices were occasionally logged in trade results; trades now strictly use historical option contract prices for entry, exit, SL, and TP.
+- **Volume Data Augmentation**: Seamlessly integrates `tvDatafeed` (rongard fork) to fetch accurate volume for NIFTY/BANKNIFTY indices.
 
 ### System Requirements
 - **tvDatafeed**: Ensure you have `tvdatafeed` installed in your environment (`pip install tvdatafeed`).
