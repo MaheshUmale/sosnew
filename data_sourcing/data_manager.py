@@ -162,13 +162,27 @@ class DataManager:
         data_to_store = None
         
         # Try TVDatafeed first if configured
-        if self.tv_client and "NIFTY" in canonical_symbol.upper() and self.tv_client.tv:
+        if self.tv_client and self.tv_client.tv:
             from data_sourcing.tvdatafeed_client import Interval
-            interval_map = {'1m': Interval.in_1_minute}
+            interval_map = {
+                '1m': Interval.in_1_minute,
+                '5m': Interval.in_5_minute,
+                '15m': Interval.in_15_minute,
+                '1h': Interval.in_1_hour,
+                '1d': Interval.in_daily
+            }
             
-            # Map canonical symbol to TVDatafeed friendly symbol
-            tv_symbol = "NIFTY" if "NIFTY" in canonical_symbol.upper() and "BANK" not in canonical_symbol.upper() else ("BANKNIFTY" if "BANK" in canonical_symbol.upper() else canonical_symbol)
-            
+            # Determine TV-friendly symbol
+            # 1. Check if it's a known index
+            if canonical_symbol == "NSE|INDEX|NIFTY":
+                tv_symbol = "NIFTY"
+            elif canonical_symbol == "NSE|INDEX|BANKNIFTY":
+                tv_symbol = "BANKNIFTY"
+            else:
+                # 2. Otherwise use the canonical_symbol (which for options is the trading symbol)
+                # TVDatafeedClient.get_historical_data will handle the option conversion if needed.
+                tv_symbol = canonical_symbol
+
             try:
                 data = self.tv_client.get_historical_data(tv_symbol, exchange, interval_map.get(interval, Interval.in_1_minute), n_bars)
                 if data is not None and not data.empty:
