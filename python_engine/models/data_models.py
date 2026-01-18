@@ -22,6 +22,7 @@ class Sentiment:
     oi_wall_above: float = 0.0
     oi_wall_below: float = 0.0
     regime: Optional[str] = None
+    smart_trend: Optional[str] = None
 
 @dataclass
 class OptionChainData:

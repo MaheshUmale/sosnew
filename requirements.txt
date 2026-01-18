@@ -5,3 +5,4 @@ requests
 upstox-python-sdk @ git+https://github.com/upstox/upstox-python.git@0b6dd12a1b0d107a8d95284840ed4bfb1be37230
 jsonschema
 tvdatafeed @ git+https://github.com/rongard/tvdatafeed.git
+scipy>=1.10.0

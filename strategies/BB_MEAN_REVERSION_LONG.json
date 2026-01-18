@@ -6,6 +6,11 @@
             "quantity_mod": 1.2,
             "tp_mult": 1.5
         },
+        "BULLISH": {
+            "allow_entry": true,
+            "quantity_mod": 1.5,
+            "tp_mult": 2.5
+        },
         "BEARISH": {
             "allow_entry": true,
             "quantity_mod": 1.0,
@@ -13,6 +18,14 @@
         }
     },
     "phases": [
+        {
+            "id": "SMART_FILTER",
+            "conditions": [
+                "sentiment.smart_trend in ['Long Buildup', 'Short Covering', 'Neutral']"
+            ],
+            "capture": {},
+            "timeout": 0
+        },
         {
             "id": "OUTSIDE",
             "conditions": [
@@ -30,7 +43,7 @@
                 "close > open"
             ],
             "capture": {},
-            "timeout": 3
+            "timeout": 5
         }
     ],
     "execution": {

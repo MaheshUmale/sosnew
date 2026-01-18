@@ -1,6 +1,11 @@
 {
     "pattern_id": "VWAP_EMA_GATE_LONG",
     "regime_config": {
+        "COMPLETE_BULLISH": {
+            "allow_entry": true,
+            "quantity_mod": 2.0,
+            "tp_mult": 3.0
+        },
         "BULLISH": {
             "allow_entry": true,
             "quantity_mod": 1.5,
