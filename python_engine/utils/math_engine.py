@@ -83,5 +83,10 @@ class MathEngine:
             return "Long Unwinding"
         elif price_change > 0 and oi_change < 0:
             return "Short Covering"
-        else:
-            return "Neutral"
+
+        # Fallback if price_change is 0 but OI change is significant
+        if price_change == 0:
+            if oi_change > 0: return "Buildup"
+            if oi_change < 0: return "Unwinding"
+
+        return "Neutral"

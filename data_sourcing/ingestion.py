@@ -260,10 +260,15 @@ class IngestionManager:
                     # But we need price change. Let's assume price moved in direction of spot for now
                     # or just use the direction from index.
                     index_row = index_candles[index_candles['timestamp'] == ts]
+                    price_dir = 0
                     if not index_row.empty:
-                        price_dir = 1 if index_row.iloc[0]['close'] > index_row.iloc[0]['open'] else -1
-                        group_processed.at[idx, 'call_trend'] = MathEngine.get_smart_trend(price_dir, row['call_oi_chg'])
-                        group_processed.at[idx, 'put_trend'] = MathEngine.get_smart_trend(-price_dir, row['put_oi_chg']) # Put price moves opposite to spot
+                        c = index_row.iloc[0]['close']
+                        o = index_row.iloc[0]['open']
+                        if c > o: price_dir = 1
+                        elif c < o: price_dir = -1
+
+                    group_processed.at[idx, 'call_trend'] = MathEngine.get_smart_trend(price_dir, row['call_oi_chg'])
+                    group_processed.at[idx, 'put_trend'] = MathEngine.get_smart_trend(-price_dir, row['put_oi_chg']) # Put price moves opposite to spot
 
                 processed_snapshots.append(group_processed)
 
@@ -273,13 +278,13 @@ class IngestionManager:
                 atm_options = group_processed[abs(group_processed['strike'] - atm_strike) <= 100]
                 if not atm_options.empty:
                     # Combine trends and find mode
-                    all_trends = atm_options['call_trend'].tolist() + atm_options['put_trend'].tolist()
+                    all_trends = [t for t in (atm_options['call_trend'].tolist() + atm_options['put_trend'].tolist()) if t != 'Neutral']
                     market_trend = max(set(all_trends), key=all_trends.count) if all_trends else "Neutral"
                 else:
                     market_trend = "Neutral"
 
                 stats_list.append({
-                    'timestamp': ts,
+                    'timestamp': ts.strftime('%Y-%m-%d %H:%M:%S'),
                     'pcr': pcr,
                     'oi_wall_above': oi_wall_above,
                     'oi_wall_below': oi_wall_below,

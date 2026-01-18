@@ -6,6 +6,7 @@ from python_engine.models.trade import Position, Trade, TradeSide, TradeOutcome
 from python_engine.core.trade_logger import TradeLog
 from python_engine.utils.dot_dict import DotDict
 from python_engine.utils.mvel_functions import MVEL_FUNCTIONS
+from SymbolMaster import MASTER as SymbolMaster
 
 
 class OrderOrchestrator:
