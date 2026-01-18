@@ -4,8 +4,8 @@
     "regime_config": {
         "COMPLETE_BULLISH": {
             "allow_entry": true,
-            "quantity_mod": 2.0,
-            "tp_mult": 3.5
+            "quantity_mod": 2.5,
+            "tp_mult": 4.0
         },
         "BULLISH": {
             "allow_entry": true,
@@ -28,7 +28,8 @@
         {
             "id": "SMART_FILTER",
             "conditions": [
-                "sentiment.smart_trend in ['Long Buildup', 'Short Covering', 'Neutral']"
+                "sentiment.smart_trend in ['Long Buildup', 'Short Covering', 'Neutral']",
+                "sentiment.pcr > 0.8"
             ],
             "capture": {
                 "initial_trend": "sentiment.smart_trend"

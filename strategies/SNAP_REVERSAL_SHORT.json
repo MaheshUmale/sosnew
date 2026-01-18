@@ -1,33 +1,34 @@
 {
     "pattern_id": "SNAP_REVERSAL_SHORT",
     "regime_config": {
-        "COMPLETE_BEARISH": {
-            "allow_entry": true,
-            "quantity_mod": 2.0,
-            "tp_mult": 3.5
+        "COMPLETE_BULLISH": {
+            "allow_entry": false
         },
-        "BEARISH": {
-            "allow_entry": true,
-            "quantity_mod": 1.5,
-            "tp_mult": 2.0
+        "BULLISH": {
+            "allow_entry": false
         },
         "SIDEWAYS": {
             "allow_entry": true,
             "quantity_mod": 1.0,
             "tp_mult": 1.5
         },
-        "BULLISH": {
-            "allow_entry": false
+        "BEARISH": {
+            "allow_entry": true,
+            "quantity_mod": 1.5,
+            "tp_mult": 2.0
         },
-        "COMPLETE_BULLISH": {
-            "allow_entry": false
+        "COMPLETE_BEARISH": {
+            "allow_entry": true,
+            "quantity_mod": 2.5,
+            "tp_mult": 4.0
         }
     },
     "phases": [
         {
             "id": "SMART_FILTER",
             "conditions": [
-                "sentiment.smart_trend in ['Short Buildup', 'Long Unwinding', 'Neutral']"
+                "sentiment.smart_trend in ['Short Buildup', 'Long Unwinding', 'Neutral']",
+                "sentiment.pcr < 1.2"
             ],
             "capture": {},
             "timeout": 0

@@ -133,6 +133,7 @@ class DatabaseManager:
                 trade_id TEXT PRIMARY KEY,
                 pattern_id TEXT,
                 symbol TEXT,
+                instrument_key TEXT,
                 side TEXT,
                 entry_time DATETIME,
                 entry_price REAL,
@@ -140,21 +141,26 @@ class DatabaseManager:
                 exit_price REAL,
                 stop_loss REAL,
                 take_profit REAL,
+                sl_price REAL,
+                tp_price REAL,
+                quantity INTEGER,
+                status TEXT DEFAULT 'OPEN',
+                exit_reason TEXT,
                 outcome TEXT,
                 pnl REAL
             )
         ''', commit=True)
 
-        # Migration: Ensure market_stats has call_oi and put_oi columns
-        self._ensure_market_stats_columns()
+        # Migration: Ensure tables have latest columns
+        self._run_migrations()
 
-    def _ensure_market_stats_columns(self):
-        """Ensures that all required columns exist in market_stats for users with older DB versions."""
+    def _run_migrations(self):
+        """Ensures that all required columns exist in tables for users with older DB versions."""
         try:
             with self as db:
                 cursor = db.conn.cursor()
 
-                # Check option_chain_data
+                # 1. Check option_chain_data
                 cursor.execute("PRAGMA table_info(option_chain_data)")
                 oc_columns = [info[1] for info in cursor.fetchall()]
                 new_oc_cols = {
@@ -169,19 +175,35 @@ class DatabaseManager:
                         print(f"[DatabaseManager] Migrating option_chain_data: adding {col} column")
                         db.conn.execute(f"ALTER TABLE option_chain_data ADD COLUMN {col} {dtype}")
 
-                # Check market_stats
+                # 2. Check market_stats
                 cursor.execute("PRAGMA table_info(market_stats)")
                 ms_columns = [info[1] for info in cursor.fetchall()]
+                new_ms_cols = {
+                    'call_oi': 'REAL',
+                    'put_oi': 'REAL',
+                    'smart_trend': 'TEXT'
+                }
+                for col, dtype in new_ms_cols.items():
+                    if col not in ms_columns:
+                        print(f"[DatabaseManager] Migrating market_stats: adding {col} column")
+                        db.conn.execute(f"ALTER TABLE market_stats ADD COLUMN {col} {dtype}")
 
-                if 'call_oi' not in ms_columns:
-                    print("[DatabaseManager] Migrating market_stats: adding call_oi column")
-                    db.conn.execute("ALTER TABLE market_stats ADD COLUMN call_oi REAL")
-                if 'put_oi' not in ms_columns:
-                    print("[DatabaseManager] Migrating market_stats: adding put_oi column")
-                    db.conn.execute("ALTER TABLE market_stats ADD COLUMN put_oi REAL")
-                if 'smart_trend' not in ms_columns:
-                    print("[DatabaseManager] Migrating market_stats: adding smart_trend column")
-                    db.conn.execute("ALTER TABLE market_stats ADD COLUMN smart_trend TEXT")
+                # 3. Check trades
+                cursor.execute("PRAGMA table_info(trades)")
+                tr_columns = [info[1] for info in cursor.fetchall()]
+                new_tr_cols = {
+                    'instrument_key': 'TEXT',
+                    'sl_price': 'REAL',
+                    'tp_price': 'REAL',
+                    'quantity': 'INTEGER',
+                    'status': "TEXT DEFAULT 'OPEN'",
+                    'exit_reason': 'TEXT'
+                }
+                for col, dtype in new_tr_cols.items():
+                    if col not in tr_columns:
+                        print(f"[DatabaseManager] Migrating trades: adding {col} column")
+                        db.conn.execute(f"ALTER TABLE trades ADD COLUMN {col} {dtype}")
+
                 db.conn.commit()
         except Exception as e:
             print(f"[DatabaseManager] Migration failed: {e}")
@@ -192,14 +214,16 @@ class DatabaseManager:
         """
         query = '''
             INSERT OR REPLACE INTO trades (
-                trade_id, pattern_id, symbol, side, entry_time, entry_price,
-                exit_time, exit_price, stop_loss, take_profit, outcome, pnl
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                trade_id, pattern_id, symbol, instrument_key, side, entry_time, entry_price,
+                exit_time, exit_price, stop_loss, take_profit, sl_price, tp_price,
+                quantity, status, exit_reason, outcome, pnl
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         '''
         params = (
             trade_data.get('trade_id'),
             trade_data.get('pattern_id'),
             trade_data.get('symbol'),
+            trade_data.get('instrument_key'),
             trade_data.get('side'),
             trade_data.get('entry_time'),
             trade_data.get('entry_price'),
@@ -207,6 +231,11 @@ class DatabaseManager:
             trade_data.get('exit_price'),
             trade_data.get('stop_loss'),
             trade_data.get('take_profit'),
+            trade_data.get('sl_price'),
+            trade_data.get('tp_price'),
+            trade_data.get('quantity'),
+            trade_data.get('status', 'OPEN'),
+            trade_data.get('exit_reason'),
             trade_data.get('outcome'),
             trade_data.get('pnl')
         )
@@ -217,7 +246,7 @@ class DatabaseManager:
         Stores historical candle data in the database.
         Uses INSERT OR REPLACE to handle duplicate entries based on the primary key.
         """
-        from SymbolMaster import MASTER as SymbolMaster
+        from python_engine.utils.symbol_master import MASTER as SymbolMaster
         instrument_key = SymbolMaster.get_upstox_key(symbol)
         if not instrument_key:
             instrument_key = symbol  # Fallback for symbols not in master
@@ -280,7 +309,7 @@ class DatabaseManager:
                 db.conn.execute("DROP TABLE IF EXISTS temp_historical_candles")
 
     def get_historical_candles(self, symbol, exchange, interval, from_date, to_date):
-        from SymbolMaster import MASTER as SymbolMaster
+        from python_engine.utils.symbol_master import MASTER as SymbolMaster
         instrument_key = SymbolMaster.get_upstox_key(symbol)
         if not instrument_key:
             instrument_key = symbol # Fallback

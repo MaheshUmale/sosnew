@@ -64,7 +64,13 @@ If no dates are specified, it defaults to the last 5 days.
 
 To run a strict backtest without automatic backfilling, use the `--no-backfill` flag:
 ```bash
-python run.py --mode backtest --symbol NIFTY --no-backfill
+python run.py --mode backtest --symbol "NSE|INDEX|NIFTY" --from-date 2026-01-16 --to-date 2026-01-16
+```
+
+### 📊 Trade Analysis UI
+Visualize your trades with side-by-side Index and Option charts:
+```bash
+streamlit run run_ui.py
 ```
 
 This will run the ingested data through the engine and print any trade executions to the console.
