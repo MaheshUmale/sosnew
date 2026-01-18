@@ -174,6 +174,8 @@ class IngestionManager:
             index_map = index_candles.set_index('timestamp')['close'].to_dict()
 
             # Get all option chain snapshots for this day
+            # Filter for records that need processing (e.g. call_iv is NULL or 0)
+            # or just process all if it's a small set. For backfill, we process all.
             with self.db_manager as db:
                 query = "SELECT * FROM option_chain_data WHERE symbol = ? AND DATE(timestamp) = ?"
                 df = pd.read_sql_query(query, db.conn, params=(symbol, date_str))
@@ -288,8 +290,15 @@ class IngestionManager:
                 })
 
             if processed_snapshots:
+                # To optimize, we could only store the new snapshots, but store_option_chain
+                # uses INSERT OR REPLACE which is already somewhat efficient for small batches.
+                # However, for 1-minute data, we only want to store what we processed.
                 full_processed_df = pd.concat(processed_snapshots)
-                self.db_manager.store_option_chain(symbol, full_processed_df, date=date_str)
+
+                # Batch store in chunks to avoid lock issues on larger datasets
+                chunk_size = 500
+                for i in range(0, len(full_processed_df), chunk_size):
+                    self.db_manager.store_option_chain(symbol, full_processed_df.iloc[i:i+chunk_size], date=date_str)
 
             if stats_list:
                 stats_df = pd.DataFrame(stats_list)

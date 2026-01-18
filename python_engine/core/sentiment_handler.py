@@ -22,14 +22,27 @@ class SentimentHandler:
         return self._current_regime
 
     def _determine_regime(self, sentiment: Sentiment) -> str:
+        # Use Smart Trend Logic if available (Priority)
+        if sentiment.smart_trend:
+            if sentiment.smart_trend == "Long Buildup":
+                return "COMPLETE_BULLISH"
+            elif sentiment.smart_trend == "Short Covering":
+                return "BULLISH"
+            elif sentiment.smart_trend == "Short Buildup":
+                return "COMPLETE_BEARISH"
+            elif sentiment.smart_trend == "Long Unwinding":
+                return "BEARISH"
+
+        # Fallback to PCR logic (Aligned with PRD: High PCR = Bullish)
         pcr = sentiment.pcr
-        if pcr < self.PCR_EXTREME_BULLISH:
+        # PRD: > 1.2 Extremely Bullish, < 0.6 Extremely Bearish
+        if pcr > 1.2:
             return "COMPLETE_BULLISH"
-        elif pcr < self.PCR_NEUTRAL:
+        elif pcr > 1.0:
             return "BULLISH"
-        elif pcr > self.PCR_EXTREME_BEARISH:
+        elif pcr < 0.6:
             return "COMPLETE_BEARISH"
-        elif pcr > self.PCR_NEUTRAL:
+        elif pcr < 0.8:
             return "BEARISH"
         else:
             return "SIDEWAYS"

@@ -8,8 +8,13 @@
         },
         "BULLISH": {
             "allow_entry": true,
-            "quantity_mod": 1.2,
-            "tp_mult": 2.2
+            "quantity_mod": 1.5,
+            "tp_mult": 2.5
+        },
+        "COMPLETE_BULLISH": {
+            "allow_entry": true,
+            "quantity_mod": 2.0,
+            "tp_mult": 4.0
         }
     },
     "phases": [
