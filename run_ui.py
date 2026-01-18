@@ -142,8 +142,7 @@ if live_mode:
     st.rerun()
 
 # Data Loading
-symbol_master = SymbolMaster()
-db_symbol = symbol_master.get_upstox_key(selected_symbol)
+db_symbol = SymbolMaster.get_upstox_key(selected_symbol)
 
 trades_df = load_trades(db_symbol, selected_date)
 
