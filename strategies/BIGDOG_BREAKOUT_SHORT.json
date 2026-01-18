@@ -1,23 +1,37 @@
 {
     "pattern_id": "BIGDOG_BREAKOUT_SHORT",
     "regime_config": {
+        "COMPLETE_BEARISH": {
+            "allow_entry": true,
+            "quantity_mod": 2.0,
+            "tp_mult": 3.5
+        },
+        "BEARISH": {
+            "allow_entry": true,
+            "quantity_mod": 1.5,
+            "tp_mult": 2.0
+        },
         "SIDEWAYS": {
             "allow_entry": true,
             "quantity_mod": 1.0,
             "tp_mult": 1.5
         },
-        "BEARISH": {
-            "allow_entry": true,
-            "quantity_mod": 1.5,
-            "tp_mult": 2.5
+        "BULLISH": {
+            "allow_entry": false
         },
-        "COMPLETE_BEARISH": {
-            "allow_entry": true,
-            "quantity_mod": 2.0,
-            "tp_mult": 4.0
+        "COMPLETE_BULLISH": {
+            "allow_entry": false
         }
     },
     "phases": [
+        {
+            "id": "SMART_FILTER",
+            "conditions": [
+                "sentiment.smart_trend in ['Short Buildup', 'Long Unwinding', 'Neutral']"
+            ],
+            "capture": {},
+            "timeout": 0
+        },
         {
             "id": "CONSOLIDATION",
             "conditions": [
@@ -45,5 +59,6 @@
         "sl": "vars.range_high",
         "tp": "close - (vars.range_high - close) * 2.0",
         "option_selection": "ATM_PUT"
-    }
+    },
+    "description": "BIGDOG BREAKOUT SHORT"
 }

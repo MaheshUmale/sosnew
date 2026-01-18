@@ -2,18 +2,33 @@
     "pattern_id": "SMART_TREND_INDEX_LONG",
     "description": "Uses Smart Trend (Long Buildup/Short Covering) from Option Chain Analysis to trigger Index Long positions.",
     "regime_config": {
-        "SIDEWAYS": { "allow_entry": true, "quantity_mod": 1.0, "tp_mult": 2.0 },
-        "BULLISH": { "allow_entry": true, "quantity_mod": 1.5, "tp_mult": 3.0 },
-        "COMPLETE_BULLISH": { "allow_entry": true, "quantity_mod": 2.0, "tp_mult": 4.0 },
-        "BEARISH": { "allow_entry": false },
-        "COMPLETE_BEARISH": { "allow_entry": false }
+        "COMPLETE_BULLISH": {
+            "allow_entry": true,
+            "quantity_mod": 2.0,
+            "tp_mult": 3.5
+        },
+        "BULLISH": {
+            "allow_entry": true,
+            "quantity_mod": 1.5,
+            "tp_mult": 2.0
+        },
+        "SIDEWAYS": {
+            "allow_entry": true,
+            "quantity_mod": 1.0,
+            "tp_mult": 1.5
+        },
+        "BEARISH": {
+            "allow_entry": false
+        },
+        "COMPLETE_BEARISH": {
+            "allow_entry": false
+        }
     },
     "phases": [
         {
             "id": "SMART_FILTER",
             "conditions": [
-                "sentiment.smart_trend in ['Long Buildup', 'Short Covering']",
-                "sentiment.pcr > 0.8"
+                "sentiment.smart_trend in ['Long Buildup', 'Short Covering', 'Neutral']"
             ],
             "capture": {
                 "initial_trend": "sentiment.smart_trend"

@@ -1,57 +1,72 @@
 {
-  "pattern_id": "BRF_SHORT",
-  "regime_config": {
-    "COMPLETE_BULLISH": {
-      "allow_entry": false
+    "pattern_id": "BRF_REVERSAL_SHORT",
+    "regime_config": {
+        "COMPLETE_BEARISH": {
+            "allow_entry": true,
+            "quantity_mod": 2.0,
+            "tp_mult": 3.5
+        },
+        "BEARISH": {
+            "allow_entry": true,
+            "quantity_mod": 1.5,
+            "tp_mult": 2.0
+        },
+        "SIDEWAYS": {
+            "allow_entry": true,
+            "quantity_mod": 1.0,
+            "tp_mult": 1.5
+        },
+        "BULLISH": {
+            "allow_entry": false
+        },
+        "COMPLETE_BULLISH": {
+            "allow_entry": false
+        }
     },
-    "SIDEWAYS": {
-      "tp_mult": 1.0,
-      "quantity_mod": 0.5
+    "phases": [
+        {
+            "id": "SMART_FILTER",
+            "conditions": [
+                "sentiment.smart_trend in ['Short Buildup', 'Long Unwinding', 'Neutral']"
+            ],
+            "capture": {},
+            "timeout": 0
+        },
+        {
+            "id": "SETUP",
+            "conditions": [
+                "volume > 10000"
+            ],
+            "capture": {
+                "mother_h": "high",
+                "mother_l": "low"
+            },
+            "timeout": 0
+        },
+        {
+            "id": "VALIDATION",
+            "conditions": [
+                "close < vars.mother_l"
+            ],
+            "timeout": 5,
+            "capture": {}
+        },
+        {
+            "id": "TRIGGER",
+            "conditions": [
+                "high < vars.mother_h",
+                "close > vars.mother_l"
+            ],
+            "capture": {},
+            "timeout": 0
+        }
+    ],
+    "execution": {
+        "side": "SELL",
+        "entry": "vars.mother_l - 0.1",
+        "sl": "vars.mother_h",
+        "tp": "entry - (sl - entry) * 2.0",
+        "option_selection": "ATM_PUT"
     },
-    "BEARISH": {
-      "tp_mult": 2.5,
-      "quantity_mod": 1.0
-    },
-    "COMPLETE_BEARISH": {
-      "tp_mult": 3.0,
-      "quantity_mod": 1.2
-    }
-  },
-  "phases": [
-    {
-      "id": "SETUP",
-      "conditions": [
-        "volume > 10000"
-      ],
-      "capture": {
-        "mother_h": "high",
-        "mother_l": "low"
-      },
-      "timeout": 0
-    },
-    {
-      "id": "VALIDATION",
-      "conditions": [
-        "close < vars.mother_l"
-      ],
-      "timeout": 5,
-      "capture": {}
-    },
-    {
-      "id": "TRIGGER",
-      "conditions": [
-        "high < vars.mother_h",
-        "close > vars.mother_l"
-      ],
-      "capture": {},
-      "timeout": 0
-    }
-  ],
-  "execution": {
-    "side": "SELL",
-    "entry": "vars.mother_l - 0.1",
-    "sl": "vars.mother_h",
-    "tp": "entry - (sl - entry) * 2.0",
-    "option_selection": "ATM_PUT"
-  }
+    "description": "BRF REVERSAL SHORT"
 }

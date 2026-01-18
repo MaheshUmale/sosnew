@@ -122,15 +122,26 @@ If all your strategy files are valid, you will see a message saying "All strateg
 
 ## Recent Updates (Jan 2026)
 
+### 💎 Money Matrix: Option Chain Analysis Engine
+- **Smart Trend Logic**: Implemented high-frequency sentiment analysis based on the relationship between Price Change and Open Interest (OI) Change. Categorizes market into:
+    - **Long Buildup**: Price ↑, OI ↑ (Strong Bullish)
+    - **Short Covering**: Price ↑, OI ↓ (Moderate Bullish)
+    - **Short Buildup**: Price ↓, OI ↑ (Strong Bearish)
+    - **Long Unwinding**: Price ↓, OI ↓ (Moderate Bearish)
+- **Math Engine**: Integrated a robust Math Engine for real-time calculation of:
+    - **Implied Volatility (IV)**: Derived using Newton-Raphson solver on the Black-Scholes model.
+    - **Greeks**: Delta and Theta calculated per minute for every strike in the chain.
+- **Strategy Realignment**: All 18 "Gates" (trading strategies) have been updated to utilize these high-conviction signals via a new `SMART_FILTER` phase.
+
 ### 🛠️ Robust Infrastructure & Data Sync
-- **Timestamp Normalization**: Implemented minute-level normalization across all database tables. This ensures that Index candles and Option snapshots are perfectly synchronized, fixing the "spread data" issue.
-- **Proxy OI Enrichment**: Since index candles often lack Open Interest (OI), the system now automatically enriches index records with a "Proxy OI" calculated as the sum of all associated options' OI for that specific minute.
-- **SQLite Compatibility**: Replaced modern `UPSERT` syntax with a compatible `UPDATE` + `INSERT OR IGNORE` pattern, ensuring the engine runs smoothly on older versions of SQLite (common in many Python environments).
+- **Timestamp Normalization**: Implemented minute-level normalization across all database tables.
+- **Proxy OI Enrichment**: Index candles are enriched with a "Proxy OI" calculated as the sum of all associated options' OI.
+- **SQLite Compatibility**: Robust upsert pattern ensures compatibility with all SQLite versions.
 
 ### 📈 Backtest Enhancements
-- **Automatic Backfilling**: The `run.py --mode backtest` command now detects missing data and triggers `IngestionManager` automatically, providing a "one-command" setup for new users.
-- **Realistic Option Pricing**: Fixed a critical bug in the order orchestrator where index spot prices were occasionally logged in trade results; trades now strictly use historical option contract prices for entry, exit, SL, and TP.
-- **Volume Data Augmentation**: Seamlessly integrates `tvDatafeed` (rongard fork) to fetch accurate volume for NIFTY/BANKNIFTY indices.
+- **Automatic Backfilling**: `run.py` automatically triggers `IngestionManager` for missing data.
+- **Realistic Option Pricing**: Option trades strictly use contract premium prices for all calculations (Entry, SL, TP).
+- **Sentiment-Based Sizing**: Position sizing (`quantity_mod`) and profit targets (`tp_mult`) now dynamically scale based on sentiment strength (e.g., higher conviction in `COMPLETE_BULLISH` regimes).
 
 ### System Requirements
 - **tvDatafeed**: Ensure you have `tvdatafeed` installed in your environment (`pip install tvdatafeed`).
