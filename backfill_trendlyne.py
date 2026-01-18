@@ -9,7 +9,7 @@ import argparse
 from datetime import datetime, timedelta, date
 import pandas as pd
 
-from SymbolMaster import MASTER as SymbolMaster
+from python_engine.utils.symbol_master import MASTER as SymbolMaster
 from data_sourcing.database_manager import DatabaseManager
 
 # Try importing TVDatafeed

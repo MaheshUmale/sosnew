@@ -2,7 +2,7 @@ import argparse
 import asyncio
 from python_engine.main import run_backtest
 from python_engine.live_main import run_live
-from SymbolMaster import MASTER as SymbolMaster
+from python_engine.utils.symbol_master import MASTER as SymbolMaster
 
 def main():
     parser = argparse.ArgumentParser(description="Python Trading Engine")

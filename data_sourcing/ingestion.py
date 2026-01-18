@@ -3,8 +3,8 @@ import pandas as pd
 from datetime import datetime, timedelta
 from data_sourcing.data_manager import DataManager
 from data_sourcing.database_manager import DatabaseManager
-from SymbolMaster import MASTER as SymbolMaster
-from engine_config import Config
+from python_engine.utils.symbol_master import MASTER as SymbolMaster
+from python_engine.engine_config import Config
 from python_engine.utils.math_engine import MathEngine
 
 class IngestionManager:

@@ -1,11 +1,12 @@
 import argparse
 import pandas as pd
+import sqlite3
 from python_engine.core.option_chain_handler import OptionChainHandler
 from python_engine.core.sentiment_handler import SentimentHandler
 from python_engine.core.pattern_matcher_handler import PatternMatcherHandler
 from python_engine.core.execution_handler import ExecutionHandler
 from python_engine.models.data_models import MarketEvent, MessageType, VolumeBar, Sentiment, OptionChainData
-from engine_config import Config
+from python_engine.engine_config import Config
 from python_engine.core.order_orchestrator import OrderOrchestrator
 from python_engine.core.trade_logger import TradeLog
 from data_sourcing.data_manager import DataManager
@@ -104,4 +105,46 @@ def run_backtest(symbol: str, from_date: str = None, to_date: str = None, auto_b
         pattern_matcher_handler.on_event(event)
         execution_handler.on_event(event)
 
+        # Optimization: Trailing SL and Time-based exit
+        _check_exits(trade_log, timestamp, row['close'])
+
     trade_log.write_log_file()
+
+def _check_exits(trade_log, current_time, current_price):
+    # Process open trades for Trailing SL and Time-based exits
+    conn = sqlite3.connect(Config.get('db_path', 'sos_master_data.db'))
+    conn.row_factory = sqlite3.Row
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM trades WHERE status = 'OPEN'")
+    open_trades = [dict(row) for row in cursor.fetchall()]
+
+    for trade in open_trades:
+        trade_id = trade['trade_id']
+        entry_price = trade['entry_price']
+        entry_time = pd.to_datetime(trade['entry_time'])
+        side = trade['side']
+        sl_price = trade['sl_price']
+        tp_price = trade['tp_price']
+
+        # 1. Trailing SL (Move to Break-even at 50% TP)
+        target_diff = abs(tp_price - entry_price)
+        current_pnl = (current_price - entry_price) if side == 'BUY' else (entry_price - current_price)
+
+        if current_pnl >= target_diff * 0.5:
+            if (side == 'BUY' and sl_price < entry_price) or (side == 'SELL' and sl_price > entry_price):
+                print(f"[Optimization] Moving SL to Break-even for trade {trade_id}")
+                cursor.execute("UPDATE trades SET sl_price = ? WHERE trade_id = ?", (entry_price, trade_id))
+
+        # 2. Time-based Exit (30 min limit)
+        if (current_time - entry_time).total_seconds() > 1800:
+            print(f"[Optimization] Time-based exit for trade {trade_id}")
+            pnl = (current_price - entry_price) if side == 'BUY' else (entry_price - current_price)
+            outcome = 'PROFIT' if pnl > 0 else 'LOSS'
+            cursor.execute("""
+                UPDATE trades
+                SET status = 'CLOSED', exit_price = ?, exit_time = ?, exit_reason = 'TIME_EXIT', outcome = ?, pnl = ?
+                WHERE trade_id = ?
+            """, (current_price, current_time.strftime('%Y-%m-%d %H:%M:%S'), outcome, pnl, trade_id))
+
+    conn.commit()
+    conn.close()

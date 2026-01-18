@@ -3,8 +3,8 @@
     "regime_config": {
         "COMPLETE_BULLISH": {
             "allow_entry": true,
-            "quantity_mod": 2.0,
-            "tp_mult": 3.5
+            "quantity_mod": 2.5,
+            "tp_mult": 4.0
         },
         "BULLISH": {
             "allow_entry": true,
@@ -27,7 +27,8 @@
         {
             "id": "SMART_FILTER",
             "conditions": [
-                "sentiment.smart_trend in ['Long Buildup', 'Short Covering', 'Neutral']"
+                "sentiment.smart_trend in ['Long Buildup', 'Short Covering', 'Neutral']",
+                "sentiment.pcr > 0.8"
             ],
             "capture": {},
             "timeout": 0
@@ -55,7 +56,8 @@
             "id": "TRIGGER",
             "conditions": [
                 "close > vars.range_max",
-                "volume > prev_candle.volume"
+                "volume > prev_candle.volume",
+                "rsi(history, 14) > 55"
             ],
             "timeout": 0,
             "capture": {}

@@ -1,7 +1,7 @@
 import upstox_client
 import os
 try:
-    from engine_config import Config as UpstoxConfig
+    from python_engine.engine_config import Config as UpstoxConfig
     UPSTOX_AVAILABLE = True
 except ImportError:
     UPSTOX_AVAILABLE = False
@@ -12,7 +12,7 @@ class UpstoxClient:
         self.api_client = None
         if UPSTOX_AVAILABLE:
             if not access_token:
-                from engine_config import Config
+                from python_engine.engine_config import Config
                 access_token = Config.get('upstox_access_token')
 
             if access_token:

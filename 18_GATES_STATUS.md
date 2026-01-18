@@ -29,13 +29,21 @@ The SOS Scalping Engine aims to implement 18 distinct high-probability scalping 
 
 - **Smart Trend Integration**: All 18 gates are now aligned with the "Money Matrix" Option Chain logic.
 - **Verification**: Backtest on 2026-01-16 showed a **39% improvement in PnL** (from -118 to -72) and a reduction in over-trading after full alignment.
-- **Dynamic Sizing**: Strategies scale position size (2.0x) and TP goals (3.5x) in `COMPLETE_BULLISH/BEARISH` regimes.
+- **Dynamic Sizing**: Strategies scale position size (2.5x) and TP goals (4.0x) in `COMPLETE_BULLISH/BEARISH` regimes for maximum capture.
 - **Indicators**: Comprehensive set including `ema`, `vwap`, `rsi`, `bb_lower`, `bb_upper`, `atr`, etc.
 - **Wick Detection**: `high_wick`, `low_wick`, and `body_size` for precise candlestick patterns.
-- **Sentiment**: Real-time Smart Trend (Buildup/Covering/Unwinding) used as primary entry gate.
+- **Sentiment**: Real-time Smart Trend (Buildup/Covering/Unwinding) and PCR (>0.8 for Long, <1.2 for Short) used as primary entry gates.
 
-## Required Actions
+## Optimizations Implemented (Jan 2026)
+
+1.  **Regime-Based Scaling**: Enhanced multipliers for high-conviction regimes (COMPLETE_BULLISH/BEARISH).
+2.  **PCR Filter**: Added mandatory PCR checks to every gate to ensure alignment with option chain buildup.
+3.  **Momentum Confirmation**: Integrated RSI (55+ for Long, 45- for Short) into high-momentum gates (BigDog, Volume Spike).
+4.  **Trailing SL**: Added logic to move SL to break-even when 50% of the TP target is achieved.
+5.  **Time-Based Exits**: Implemented a 30-minute hard cut-off for scalps to prevent holding during theta decay.
+6.  **Side-by-Side Visualization**: New `run_ui.py` allows analyzing index and option candles together with trade markers.
+
+## Next Steps
 
 1.  **Refine TVDatafeed**: Address the Chrome cookie encryption issue to ensure index volumes are captured during backtests.
-2.  **Complete TODOs**: Implement the remaining 7 gates in JSON format.
-3.  **Validate Execution**: verify `delta` based option SL/TP logic in `order_orchestrator.py`.
+2.  **Live Validation**: verify `delta` based option SL/TP logic in `order_orchestrator.py` with live data.

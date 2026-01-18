@@ -2,7 +2,7 @@ from data_sourcing.tvdatafeed_client import TVDatafeedClient
 from data_sourcing.upstox_gateway import UpstoxClient
 from data_sourcing.trendlyne_client import TrendlyneClient
 from data_sourcing.nse_client import NSEClient
-from SymbolMaster import MASTER as SymbolMaster
+from python_engine.utils.symbol_master import MASTER as SymbolMaster
 import pandas as pd
 from datetime import datetime, timedelta
 from python_engine.utils.instrument_loader import InstrumentLoader
@@ -15,7 +15,7 @@ class DataManager:
         self.db_manager.initialize_database()
         self.instrument_loader = InstrumentLoader()
         self.fno_instruments = {}
-        from engine_config import Config
+        from python_engine.engine_config import Config
         try:
             Config.load('config.json')
         except Exception as e:
@@ -115,8 +115,9 @@ class DataManager:
         return [atm_strike + i * strike_step for i in range(-5, 6)]
 
     def get_historical_candles(self, symbol, exchange='NSE', interval='1m', n_bars=100, from_date=None, to_date=None, mode='backtest'):
-        # print(f"[DataManager] get_historical_candles called for {symbol} | Interval: {interval}")
-        
+        """
+        Unified Market Data interface: Fetches candles from DB with fallback to remote APIs for live mode.
+        """
         # 0. Canonicalize Symbol
         canonical_symbol = SymbolMaster.get_canonical_ticker(symbol)
         

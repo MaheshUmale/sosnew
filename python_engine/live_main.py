@@ -13,11 +13,11 @@ from python_engine.core.sentiment_handler import SentimentHandler
 from python_engine.core.pattern_matcher_handler import PatternMatcherHandler
 from python_engine.core.execution_handler import ExecutionHandler
 from python_engine.models.data_models import MarketEvent, MessageType, VolumeBar
-from engine_config import Config
+from python_engine.engine_config import Config
 from python_engine.core.order_orchestrator import OrderOrchestrator
 from python_engine.core.trade_logger import TradeLog
 from data_sourcing.data_manager import DataManager
-from SymbolMaster import MASTER as SymbolMaster
+from python_engine.utils.symbol_master import MASTER as SymbolMaster
 
 # --- Global State for Streamer ---
 streamer = None
