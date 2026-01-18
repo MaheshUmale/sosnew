@@ -379,8 +379,8 @@ class DatabaseManager:
             df_to_insert['symbol'] = symbol
 
             # Ensure timestamp format
-            if 'timestamp' in df_to_insert.columns:
-                df_to_insert = self._normalize_df_timestamps(df_to_insert)
+            # DON'T NORMALIZE if it's already string formatted from outside to avoid floor(min) issues if it was already floored
+            # df_to_insert = self._normalize_df_timestamps(df_to_insert)
 
             try:
                 df_to_insert.to_sql('temp_market_stats', db.conn, if_exists='replace', index=False)
