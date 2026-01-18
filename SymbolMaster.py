@@ -156,10 +156,16 @@ class SymbolMaster:
         s_upper = symbol.upper()
         if s_upper.startswith("NSE|INDEX|"):
             s_upper = s_upper.split('|')[-1]
+        elif s_upper.startswith("NSE_INDEX|"):
+            # If it's the exact key, it will be caught by the direct lookup below
+            # but if it's NSE_INDEX|NIFTY 50, we want to strip the prefix
+            parts = s_upper.split('|')
+            if len(parts) > 1:
+                s_upper = parts[1]
 
-        # 1.1 Handle alternate index prefix format
-        if s_upper.startswith("NSE_INDEX|"):
-            s_upper = s_upper.split('|')[-1]
+        # Handle Nifty 50 and Nifty Bank variations
+        if s_upper == "NIFTY 50": s_upper = "NIFTY"
+        if s_upper == "NIFTY BANK": s_upper = "BANKNIFTY"
 
         # 2. Direct Match
         if s_upper in self._mappings:

@@ -115,7 +115,7 @@ class DataManager:
         return [atm_strike + i * strike_step for i in range(-5, 6)]
 
     def get_historical_candles(self, symbol, exchange='NSE', interval='1m', n_bars=100, from_date=None, to_date=None, mode='backtest'):
-        print(f"[DataManager] get_historical_candles called for {symbol} | Interval: {interval}")
+        # print(f"[DataManager] get_historical_candles called for {symbol} | Interval: {interval}")
         
         # 0. Canonicalize Symbol
         canonical_symbol = SymbolMaster.get_canonical_ticker(symbol)
@@ -162,13 +162,27 @@ class DataManager:
         data_to_store = None
         
         # Try TVDatafeed first if configured
-        if self.tv_client and "NIFTY" in canonical_symbol.upper() and self.tv_client.tv:
+        if self.tv_client and self.tv_client.tv:
             from data_sourcing.tvdatafeed_client import Interval
-            interval_map = {'1m': Interval.in_1_minute}
+            interval_map = {
+                '1m': Interval.in_1_minute,
+                '5m': Interval.in_5_minute,
+                '15m': Interval.in_15_minute,
+                '1h': Interval.in_1_hour,
+                '1d': Interval.in_daily
+            }
             
-            # Map canonical symbol to TVDatafeed friendly symbol
-            tv_symbol = "NIFTY" if "NIFTY" in canonical_symbol.upper() and "BANK" not in canonical_symbol.upper() else ("BANKNIFTY" if "BANK" in canonical_symbol.upper() else canonical_symbol)
-            
+            # Determine TV-friendly symbol
+            # 1. Check if it's a known index
+            if canonical_symbol == "NSE|INDEX|NIFTY":
+                tv_symbol = "NIFTY"
+            elif canonical_symbol == "NSE|INDEX|BANKNIFTY":
+                tv_symbol = "BANKNIFTY"
+            else:
+                # 2. Otherwise use the canonical_symbol (which for options is the trading symbol)
+                # TVDatafeedClient.get_historical_data will handle the option conversion if needed.
+                tv_symbol = canonical_symbol
+
             try:
                 data = self.tv_client.get_historical_data(tv_symbol, exchange, interval_map.get(interval, Interval.in_1_minute), n_bars)
                 if data is not None and not data.empty:
@@ -462,12 +476,22 @@ class DataManager:
             
             trading_symbol = f"{symbol_prefix} {strike_price} {option_type} {expiry_day} {expiry_month} {expiry_year}"
             
-            # 5. Resolve the symbol to get the instrument key
-            instrument_key = SymbolMaster.get_upstox_key(trading_symbol)
+            # 5. Resolve the instrument key directly from the DB record if available
+            key_col = 'call_instrument_key' if option_type == 'CE' else 'put_instrument_key'
+            instrument_key = closest_strike_row.iloc[0].get(key_col)
+
+            if not instrument_key:
+                # Fallback to master resolution if key was not stored in option_chain_data
+                instrument_key = SymbolMaster.get_upstox_key(trading_symbol)
 
             if not instrument_key:
                 print(f"Could not resolve instrument key for constructed symbol: {trading_symbol}")
                 return None, None
+
+            # Get the proper trading symbol from the master if it differs
+            actual_trading_symbol = SymbolMaster.get_ticker_from_key(instrument_key)
+            if actual_trading_symbol and actual_trading_symbol != instrument_key:
+                trading_symbol = actual_trading_symbol
 
             return instrument_key, trading_symbol
 
