@@ -78,6 +78,16 @@ class DatabaseManager:
                 put_instrument_key TEXT,
                 call_oi REAL,
                 put_oi REAL,
+                call_ltp REAL,
+                put_ltp REAL,
+                call_iv REAL,
+                put_iv REAL,
+                call_delta REAL,
+                put_delta REAL,
+                call_theta REAL,
+                put_theta REAL,
+                call_trend TEXT,
+                put_trend TEXT,
                 PRIMARY KEY (symbol, timestamp, strike)
             )
         ''', commit=True)
@@ -112,6 +122,7 @@ class DatabaseManager:
                 oi_wall_below REAL,
                 call_oi REAL,
                 put_oi REAL,
+                smart_trend TEXT,
                 PRIMARY KEY (symbol, timestamp)
             )
         ''', commit=True)
@@ -142,15 +153,35 @@ class DatabaseManager:
         try:
             with self as db:
                 cursor = db.conn.cursor()
-                cursor.execute("PRAGMA table_info(market_stats)")
-                columns = [info[1] for info in cursor.fetchall()]
 
-                if 'call_oi' not in columns:
+                # Check option_chain_data
+                cursor.execute("PRAGMA table_info(option_chain_data)")
+                oc_columns = [info[1] for info in cursor.fetchall()]
+                new_oc_cols = {
+                    'call_ltp': 'REAL', 'put_ltp': 'REAL',
+                    'call_iv': 'REAL', 'put_iv': 'REAL',
+                    'call_delta': 'REAL', 'put_delta': 'REAL',
+                    'call_theta': 'REAL', 'put_theta': 'REAL',
+                    'call_trend': 'TEXT', 'put_trend': 'TEXT'
+                }
+                for col, dtype in new_oc_cols.items():
+                    if col not in oc_columns:
+                        print(f"[DatabaseManager] Migrating option_chain_data: adding {col} column")
+                        db.conn.execute(f"ALTER TABLE option_chain_data ADD COLUMN {col} {dtype}")
+
+                # Check market_stats
+                cursor.execute("PRAGMA table_info(market_stats)")
+                ms_columns = [info[1] for info in cursor.fetchall()]
+
+                if 'call_oi' not in ms_columns:
                     print("[DatabaseManager] Migrating market_stats: adding call_oi column")
                     db.conn.execute("ALTER TABLE market_stats ADD COLUMN call_oi REAL")
-                if 'put_oi' not in columns:
+                if 'put_oi' not in ms_columns:
                     print("[DatabaseManager] Migrating market_stats: adding put_oi column")
                     db.conn.execute("ALTER TABLE market_stats ADD COLUMN put_oi REAL")
+                if 'smart_trend' not in ms_columns:
+                    print("[DatabaseManager] Migrating market_stats: adding smart_trend column")
+                    db.conn.execute("ALTER TABLE market_stats ADD COLUMN smart_trend TEXT")
                 db.conn.commit()
         except Exception as e:
             print(f"[DatabaseManager] Migration failed: {e}")
@@ -285,7 +316,10 @@ class DatabaseManager:
                 # Use temp table for merging
                 df_to_insert.to_sql('temp_option_chain', db.conn, if_exists='replace', index=False)
 
-                cols = ['symbol', 'timestamp', 'strike', 'expiry', 'call_oi_chg', 'put_oi_chg', 'call_instrument_key', 'put_instrument_key', 'call_oi', 'put_oi']
+                cols = ['symbol', 'timestamp', 'strike', 'expiry', 'call_oi_chg', 'put_oi_chg',
+                        'call_instrument_key', 'put_instrument_key', 'call_oi', 'put_oi',
+                        'call_ltp', 'put_ltp', 'call_iv', 'put_iv', 'call_delta', 'put_delta',
+                        'call_theta', 'put_theta', 'call_trend', 'put_trend']
                 actual_cols = [c for c in cols if c in df_to_insert.columns]
 
                 # Compatible Upsert for option_chain_data
@@ -351,7 +385,7 @@ class DatabaseManager:
             try:
                 df_to_insert.to_sql('temp_market_stats', db.conn, if_exists='replace', index=False)
 
-                cols = ['symbol', 'timestamp', 'pcr', 'pcr_velocity', 'advances', 'declines', 'oi_wall_above', 'oi_wall_below', 'call_oi', 'put_oi']
+                cols = ['symbol', 'timestamp', 'pcr', 'pcr_velocity', 'advances', 'declines', 'oi_wall_above', 'oi_wall_below', 'call_oi', 'put_oi', 'smart_trend']
                 # filter columns that exist in df
                 actual_cols = [c for c in cols if c in df_to_insert.columns]
 

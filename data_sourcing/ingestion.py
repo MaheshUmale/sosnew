@@ -5,6 +5,7 @@ from data_sourcing.data_manager import DataManager
 from data_sourcing.database_manager import DatabaseManager
 from SymbolMaster import MASTER as SymbolMaster
 from engine_config import Config
+from python_engine.utils.math_engine import MathEngine
 
 class IngestionManager:
     def __init__(self, access_token=None):
@@ -161,9 +162,17 @@ class IngestionManager:
 
     def calculate_and_store_stats(self, symbol, date_str):
         """
-        Calculates PCR and other stats from stored option chain data for a specific day.
+        Calculates PCR, IV, Greeks, and Trend from stored option chain data.
         """
         try:
+            # Get index candles for spot prices
+            index_candles = self.data_manager.get_historical_candles(symbol, from_date=date_str, to_date=date_str, mode='backtest')
+            if index_candles is None or index_candles.empty:
+                print(f"      [WARN] No index candles found for {symbol} on {date_str}. Skipping stats.")
+                return
+            index_candles['timestamp'] = pd.to_datetime(index_candles['timestamp'])
+            index_map = index_candles.set_index('timestamp')['close'].to_dict()
+
             # Get all option chain snapshots for this day
             with self.db_manager as db:
                 query = "SELECT * FROM option_chain_data WHERE symbol = ? AND DATE(timestamp) = ?"
@@ -175,29 +184,97 @@ class IngestionManager:
 
             df['timestamp'] = pd.to_datetime(df['timestamp'])
 
-            # Fill NaNs in OI columns
-            df['call_oi'] = pd.to_numeric(df['call_oi'], errors='coerce').fillna(0)
-            df['put_oi'] = pd.to_numeric(df['put_oi'], errors='coerce').fillna(0)
+            # Fill NaNs and ensure numeric
+            numeric_cols = ['call_oi', 'put_oi', 'call_oi_chg', 'put_oi_chg', 'call_ltp', 'put_ltp']
+            for col in numeric_cols:
+                if col in df.columns:
+                    df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0)
+                else:
+                    df[col] = 0.0
 
-            # Group by timestamp to calculate PCR per minute
+            # Sort by timestamp and strike for trend calculation
+            df = df.sort_values(['timestamp', 'strike'])
+
+            processed_snapshots = []
             stats_list = []
+
+            # Risk free rate (approx 10%)
+            R = 0.1
+
             for ts, group in df.groupby('timestamp'):
+                # Get spot price for this timestamp
+                spot = index_map.get(ts)
+                if not spot:
+                    # Try finding closest
+                    closest_ts = min(index_map.keys(), key=lambda x: abs(x - ts))
+                    if abs((closest_ts - ts).total_seconds()) < 300: # within 5 mins
+                        spot = index_map[closest_ts]
+                    else:
+                        continue
+
                 total_call_oi = group['call_oi'].sum()
                 total_put_oi = group['put_oi'].sum()
-
                 pcr = round(total_put_oi / total_call_oi, 4) if total_call_oi > 0 else 1.0
 
-                # Simple OI wall logic - find strike with max OI
-                # Use idxmax only if there is non-zero OI, otherwise default to 0
-                if not group.empty and total_call_oi > 0:
-                    oi_wall_above = group.loc[group['call_oi'].idxmax()]['strike']
-                else:
-                    oi_wall_above = 0
+                # OI Walls
+                oi_wall_above = group.loc[group['call_oi'].idxmax()]['strike'] if total_call_oi > 0 else 0
+                oi_wall_below = group.loc[group['put_oi'].idxmax()]['strike'] if total_put_oi > 0 else 0
 
-                if not group.empty and total_put_oi > 0:
-                    oi_wall_below = group.loc[group['put_oi'].idxmax()]['strike']
+                # Time to Expiry (T in years)
+                # We assume all options in group have same expiry for simplicity, or take first
+                expiry_str = group['expiry'].iloc[0] if 'expiry' in group.columns and group['expiry'].iloc[0] else None
+                if expiry_str:
+                    expiry_dt = pd.to_datetime(expiry_str).replace(hour=15, minute=30)
+                    time_diff = expiry_dt - ts
+                    T = max(0, time_diff.total_seconds() / (365 * 24 * 3600))
                 else:
-                    oi_wall_below = 0
+                    T = 0
+
+                group_processed = group.copy()
+
+                # Math Engine Calculations
+                for idx, row in group_processed.iterrows():
+                    # Call IV & Greeks
+                    if row['call_ltp'] > 0 and T > 0:
+                        iv_c = MathEngine.calculate_iv(row['call_ltp'], spot, row['strike'], T, R, 'CE')
+                        greeks_c = MathEngine.calculate_greeks(spot, row['strike'], T, R, iv_c, 'CE')
+                        group_processed.at[idx, 'call_iv'] = round(iv_c, 4)
+                        group_processed.at[idx, 'call_delta'] = greeks_c['delta']
+                        group_processed.at[idx, 'call_theta'] = greeks_c['theta']
+
+                    # Put IV & Greeks
+                    if row['put_ltp'] > 0 and T > 0:
+                        iv_p = MathEngine.calculate_iv(row['put_ltp'], spot, row['strike'], T, R, 'PE')
+                        greeks_p = MathEngine.calculate_greeks(spot, row['strike'], T, R, iv_p, 'PE')
+                        group_processed.at[idx, 'put_iv'] = round(iv_p, 4)
+                        group_processed.at[idx, 'put_delta'] = greeks_p['delta']
+                        group_processed.at[idx, 'put_theta'] = greeks_p['theta']
+
+                    # Smart Trend (Using OI Change as proxy for trend since we might not have prev LTP easily)
+                    # The PRD says Price Change vs OI Change.
+                    # For a single strike, price change is row['call_oi_chg'] is not price.
+                    # We'll use a simplified version: if OI CHG > 0 and it's ITM, etc.
+                    # Actually, if we have call_oi_chg, we can use it.
+                    # But we need price change. Let's assume price moved in direction of spot for now
+                    # or just use the direction from index.
+                    index_row = index_candles[index_candles['timestamp'] == ts]
+                    if not index_row.empty:
+                        price_dir = 1 if index_row.iloc[0]['close'] > index_row.iloc[0]['open'] else -1
+                        group_processed.at[idx, 'call_trend'] = MathEngine.get_smart_trend(price_dir, row['call_oi_chg'])
+                        group_processed.at[idx, 'put_trend'] = MathEngine.get_smart_trend(-price_dir, row['put_oi_chg']) # Put price moves opposite to spot
+
+                processed_snapshots.append(group_processed)
+
+                # Aggregate Smart Trend for Market Stats
+                # Simple majority trend of ATM strikes
+                atm_strike = self.data_manager.calculate_atm_strike(symbol, spot)
+                atm_options = group_processed[abs(group_processed['strike'] - atm_strike) <= 100]
+                if not atm_options.empty:
+                    # Combine trends and find mode
+                    all_trends = atm_options['call_trend'].tolist() + atm_options['put_trend'].tolist()
+                    market_trend = max(set(all_trends), key=all_trends.count) if all_trends else "Neutral"
+                else:
+                    market_trend = "Neutral"
 
                 stats_list.append({
                     'timestamp': ts,
@@ -206,9 +283,13 @@ class IngestionManager:
                     'oi_wall_below': oi_wall_below,
                     'call_oi': total_call_oi,
                     'put_oi': total_put_oi,
-                    'advances': 0, # Placeholder
-                    'declines': 0  # Placeholder
+                    'smart_trend': market_trend,
+                    'advances': 0, 'declines': 0
                 })
+
+            if processed_snapshots:
+                full_processed_df = pd.concat(processed_snapshots)
+                self.db_manager.store_option_chain(symbol, full_processed_df, date=date_str)
 
             if stats_list:
                 stats_df = pd.DataFrame(stats_list)

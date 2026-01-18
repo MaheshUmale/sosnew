@@ -301,7 +301,9 @@ class DataManager:
                                     "call_instrument_key": item.call_options.instrument_key,
                                     "put_instrument_key": item.put_options.instrument_key,
                                     "call_oi": item.call_options.market_data.oi,
-                                    "put_oi": item.put_options.market_data.oi
+                                    "put_oi": item.put_options.market_data.oi,
+                                    "call_ltp": item.call_options.market_data.last_price,
+                                    "put_ltp": item.put_options.market_data.last_price
                                 })
                         chain_data = pd.DataFrame(chain)
                         print(f"[DataManager] Chain DataFrame created: {len(chain_data)} rows")
@@ -585,11 +587,23 @@ class DataManager:
         # However, checking SentimentHandler:
         # PCR_EXTREME_BULLISH = 0.7  (Check logic later)
         
+        # Get smart trend from market_stats
+        smart_trend = "Neutral"
+        try:
+            date_str = pd.to_datetime(timestamp, unit='s').strftime('%Y-%m-%d')
+            datetime_str = pd.to_datetime(timestamp, unit='s').strftime('%Y-%m-%d %H:%M:%S')
+            stats = self.db_manager.get_market_stats(symbol, date_str, datetime_str)
+            if not stats.empty:
+                 smart_trend = stats.iloc[-1].get('smart_trend', 'Neutral')
+        except:
+            pass
+
         return Sentiment(
             pcr=pcr_value,
             advances=advances,
             declines=declines,
             pcr_velocity=0.0,
             oi_wall_above=oi_wall_above,
-            oi_wall_below=oi_wall_below
+            oi_wall_below=oi_wall_below,
+            smart_trend=smart_trend
         )
