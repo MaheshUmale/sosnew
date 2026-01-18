@@ -1,14 +1,37 @@
 {
-    "pattern_id": "MV_CROSS_SIMPLE",
+    "pattern_id": "EXAMPLE_STRATEGY",
     "regime_config": {
+        "COMPLETE_BULLISH": {
+            "allow_entry": true,
+            "quantity_mod": 2.0,
+            "tp_mult": 3.5
+        },
         "BULLISH": {
             "allow_entry": true,
-            "tp_mult": 1.5,
+            "quantity_mod": 1.5,
+            "tp_mult": 2.0
+        },
+        "SIDEWAYS": {
+            "allow_entry": true,
             "quantity_mod": 1.0,
-            "buffer_atr": 0.5
+            "tp_mult": 1.5
+        },
+        "BEARISH": {
+            "allow_entry": false
+        },
+        "COMPLETE_BEARISH": {
+            "allow_entry": false
         }
     },
     "phases": [
+        {
+            "id": "SMART_FILTER",
+            "conditions": [
+                "sentiment.smart_trend in ['Long Buildup', 'Short Covering', 'Neutral']"
+            ],
+            "capture": {},
+            "timeout": 0
+        },
         {
             "id": "SETUP",
             "conditions": [
@@ -24,5 +47,6 @@
         "sl": "candle.low - (candle.atr * 1.5)",
         "tp": "candle.close + (candle.atr * 3)",
         "option_selection": "ATM"
-    }
+    },
+    "description": "example strategy"
 }

@@ -2,18 +2,33 @@
     "pattern_id": "SMART_TREND_INDEX_SHORT",
     "description": "Uses Smart Trend (Short Buildup/Long Unwinding) from Option Chain Analysis to trigger Index Short positions.",
     "regime_config": {
-        "SIDEWAYS": { "allow_entry": true, "quantity_mod": 1.0, "tp_mult": 2.0 },
-        "BEARISH": { "allow_entry": true, "quantity_mod": 1.5, "tp_mult": 3.0 },
-        "COMPLETE_BEARISH": { "allow_entry": true, "quantity_mod": 2.0, "tp_mult": 4.0 },
-        "BULLISH": { "allow_entry": false },
-        "COMPLETE_BULLISH": { "allow_entry": false }
+        "COMPLETE_BEARISH": {
+            "allow_entry": true,
+            "quantity_mod": 2.0,
+            "tp_mult": 3.5
+        },
+        "BEARISH": {
+            "allow_entry": true,
+            "quantity_mod": 1.5,
+            "tp_mult": 2.0
+        },
+        "SIDEWAYS": {
+            "allow_entry": true,
+            "quantity_mod": 1.0,
+            "tp_mult": 1.5
+        },
+        "BULLISH": {
+            "allow_entry": false
+        },
+        "COMPLETE_BULLISH": {
+            "allow_entry": false
+        }
     },
     "phases": [
         {
             "id": "SMART_FILTER",
             "conditions": [
-                "sentiment.smart_trend in ['Short Buildup', 'Long Unwinding']",
-                "sentiment.pcr < 1.2"
+                "sentiment.smart_trend in ['Short Buildup', 'Long Unwinding', 'Neutral']"
             ],
             "capture": {
                 "initial_trend": "sentiment.smart_trend"

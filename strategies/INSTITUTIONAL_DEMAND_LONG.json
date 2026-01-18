@@ -1,26 +1,37 @@
 {
     "pattern_id": "INSTITUTIONAL_DEMAND_LONG",
     "regime_config": {
-        "BULLISH": {
-            "allow_entry": true,
-            "quantity_mod": 1.0,
-            "tp_mult": 1.0,
-            "buffer_atr": 0.5
-        },
         "COMPLETE_BULLISH": {
             "allow_entry": true,
+            "quantity_mod": 2.0,
+            "tp_mult": 3.5
+        },
+        "BULLISH": {
+            "allow_entry": true,
             "quantity_mod": 1.5,
-            "tp_mult": 1.0,
-            "buffer_atr": 0.5
+            "tp_mult": 2.0
+        },
+        "SIDEWAYS": {
+            "allow_entry": true,
+            "quantity_mod": 1.0,
+            "tp_mult": 1.5
+        },
+        "BEARISH": {
+            "allow_entry": false
         },
         "COMPLETE_BEARISH": {
-            "allow_entry": false,
-            "quantity_mod": 1.0,
-            "tp_mult": 1.0,
-            "buffer_atr": 0.5
+            "allow_entry": false
         }
     },
     "phases": [
+        {
+            "id": "SMART_FILTER",
+            "conditions": [
+                "sentiment.smart_trend in ['Long Buildup', 'Short Covering', 'Neutral']"
+            ],
+            "capture": {},
+            "timeout": 0
+        },
         {
             "id": "DEMAND_SETUP",
             "conditions": [
@@ -58,5 +69,6 @@
         "sl": "vars.block_low - 2.0",
         "tp": "entry + ( (entry - sl) * 3.0 )",
         "option_selection": "ATM_CALL"
-    }
+    },
+    "description": "INSTITUTIONAL DEMAND LONG"
 }

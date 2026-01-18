@@ -1,20 +1,37 @@
 {
     "pattern_id": "SCREENER_MOMENTUM_LONG",
     "regime_config": {
-        "SIDEWAYS": {
+        "COMPLETE_BULLISH": {
             "allow_entry": true,
-            "quantity_mod": 1.0,
-            "tp_mult": 1.0,
-            "buffer_atr": 0.5
+            "quantity_mod": 2.0,
+            "tp_mult": 3.5
         },
         "BULLISH": {
             "allow_entry": true,
+            "quantity_mod": 1.5,
+            "tp_mult": 2.0
+        },
+        "SIDEWAYS": {
+            "allow_entry": true,
             "quantity_mod": 1.0,
-            "tp_mult": 1.0,
-            "buffer_atr": 0.5
+            "tp_mult": 1.5
+        },
+        "BEARISH": {
+            "allow_entry": false
+        },
+        "COMPLETE_BEARISH": {
+            "allow_entry": false
         }
     },
     "phases": [
+        {
+            "id": "SMART_FILTER",
+            "conditions": [
+                "sentiment.smart_trend in ['Long Buildup', 'Short Covering', 'Neutral']"
+            ],
+            "capture": {},
+            "timeout": 0
+        },
         {
             "id": "SCREENER_SYNC",
             "conditions": [
@@ -50,5 +67,6 @@
         "sl": "low",
         "tp": "entry + ( (entry - sl) * 2.0 )",
         "option_selection": "OTM_CALL_1"
-    }
+    },
+    "description": "SCREENER MOMENTUM LONG"
 }

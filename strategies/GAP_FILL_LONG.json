@@ -1,12 +1,13 @@
 {
-    "pattern_id": "SAMPLE_TREND_REVERSAL",
+    "pattern_id": "GAP_FILL_LONG",
+    "description": "Morning gap fill setup. If price opens below previous close and shows strength, play the gap fill.",
     "regime_config": {
-        "COMPLETE_BEARISH": {
+        "COMPLETE_BULLISH": {
             "allow_entry": true,
             "quantity_mod": 2.0,
             "tp_mult": 3.5
         },
-        "BEARISH": {
+        "BULLISH": {
             "allow_entry": true,
             "quantity_mod": 1.5,
             "tp_mult": 2.0
@@ -16,10 +17,10 @@
             "quantity_mod": 1.0,
             "tp_mult": 1.5
         },
-        "BULLISH": {
+        "BEARISH": {
             "allow_entry": false
         },
-        "COMPLETE_BULLISH": {
+        "COMPLETE_BEARISH": {
             "allow_entry": false
         }
     },
@@ -27,38 +28,37 @@
         {
             "id": "SMART_FILTER",
             "conditions": [
-                "sentiment.smart_trend in ['Short Buildup', 'Long Unwinding', 'Neutral']"
+                "sentiment.smart_trend in ['Long Buildup', 'Short Covering', 'Neutral']"
             ],
             "capture": {},
             "timeout": 0
         },
         {
-            "id": "OVEREXTENDED",
+            "id": "GAP_IDENTIFICATION",
             "conditions": [
-                "close > moving_avg(history, 20, 'close') + (2 * atr)",
-                "volume > 50000"
+                "time_is_between(timestamp, '09:15', '09:30')",
+                "open < prev_day_close() * 0.998"
             ],
             "capture": {
-                "reversal_high": "highest(history, 5, 'high')"
+                "target_price": "prev_day_close()"
             },
             "timeout": 0
         },
         {
-            "id": "BREAKDOWN",
+            "id": "TRIGGER",
             "conditions": [
-                "close < prev_candle.low",
-                "sentiment.pcr_velocity < 0"
+                "close > moving_avg(history, 5, 'close')",
+                "sentiment.smart_trend in ['Long Buildup', 'Short Covering']"
             ],
             "capture": {},
             "timeout": 15
         }
     ],
     "execution": {
-        "side": "SELL",
-        "entry": "prev_candle.low - 2.0",
-        "sl": "vars.reversal_high + 1.0",
-        "tp": "entry - (sl - entry) * 2.0",
-        "option_selection": "ATM_PUT"
-    },
-    "description": "SAMPLE TREND REVERSAL"
+        "side": "BUY",
+        "entry": "close",
+        "sl": "lowest(history, 5, 'low')",
+        "tp": "vars.target_price",
+        "option_selection": "ATM_CALL"
+    }
 }
