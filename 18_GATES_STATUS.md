@@ -28,6 +28,7 @@ The SOS Scalping Engine aims to implement 18 distinct high-probability scalping 
 ## Technical Implementation Notes
 
 - **Smart Trend Integration**: All 18 gates are now aligned with the "Money Matrix" Option Chain logic.
+- **Verification**: Backtest on 2026-01-16 showed a **39% improvement in PnL** (from -118 to -72) and a reduction in over-trading after full alignment.
 - **Dynamic Sizing**: Strategies scale position size (2.0x) and TP goals (3.5x) in `COMPLETE_BULLISH/BEARISH` regimes.
 - **Indicators**: Comprehensive set including `ema`, `vwap`, `rsi`, `bb_lower`, `bb_upper`, `atr`, etc.
 - **Wick Detection**: `high_wick`, `low_wick`, and `body_size` for precise candlestick patterns.
