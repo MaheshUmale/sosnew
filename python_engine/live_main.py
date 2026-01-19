@@ -31,7 +31,7 @@ class LiveTradingEngine:
         self.option_chain_handler = OptionChainHandler()
         self.sentiment_handler = SentimentHandler()
         self.pattern_matcher_handler = PatternMatcherHandler(Config.get('strategies_dir'))
-        self.execution_handler = ExecutionHandler(self.order_orchestrator)
+        self.execution_handler = ExecutionHandler(self.order_orchestrator, self.data_manager)
 
         self.access_token = Config.get('upstox_access_token')
         self.symbols = {
