@@ -108,3 +108,4 @@ class MarketEvent:
     option_chain: Optional[List[OptionChainData]] = None
     screener_data: Optional[Dict[str, float]] = None
     triggered_machine: Optional['PatternStateMachine'] = None
+    market_structure: Optional[Dict] = None
