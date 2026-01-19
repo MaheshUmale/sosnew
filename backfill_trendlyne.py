@@ -124,7 +124,9 @@ def backfill_from_trendlyne(db_manager, symbol, stock_id, expiry_date_str, times
 
             stats_df = pd.DataFrame([{
                 'timestamp': full_ts,
-                'pcr': current_pcr
+                'pcr': current_pcr,
+                'call_oi': total_call_oi,
+                'put_oi': total_put_oi
             }])
             db_manager.store_market_stats(canonical_symbol, stats_df)
 
