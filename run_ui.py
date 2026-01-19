@@ -1,4 +1,12 @@
+import os
+import sys
+sys.path.append(os.getcwd())
+
 import streamlit as st
+
+# MUST BE AT TOP
+st.set_page_config(layout="wide", page_title="SOS Scalping Dashboard")
+
 import pandas as pd
 import json
 from datetime import datetime
@@ -11,9 +19,6 @@ try:
     from data_sourcing.data_manager import DataManager
     from data_sourcing.database_manager import DatabaseManager
 except ImportError:
-    import sys
-    import os
-    sys.path.append(os.getcwd())
     from python_engine.utils.symbol_master import MASTER as SymbolMaster
     from data_sourcing.data_manager import DataManager
     from data_sourcing.database_manager import DatabaseManager
@@ -26,9 +31,27 @@ try:
 except:
     DB_PATH = 'sos_master_data.db'
 
-# Initialize session state for DataManager
-if 'dm' not in st.session_state:
-    st.session_state.dm = DataManager()
+# Initialization with caching to prevent redundant work and thread issues
+@st.cache_resource
+def get_data_manager():
+    return DataManager()
+
+@st.cache_resource
+def init_symbol_master():
+    try:
+        SymbolMaster.initialize()
+        return True
+    except Exception as e:
+        return str(e)
+
+# Initialize system
+init_res = init_symbol_master()
+if init_res is not True:
+    st.error(f"Failed to initialize system: {init_res}")
+    st.stop()
+
+dm = get_data_manager()
+st.session_state.dm = dm
 
 def load_trades(symbol=None, date=None):
     db_manager = DatabaseManager(DB_PATH)
@@ -96,26 +119,23 @@ def display_chart(df, trades, title, height=400):
     chart.load()
 
 # Streamlit UI
-st.set_page_config(layout="wide", page_title="SOS Scalping Dashboard")
-
 st.title("🚀 SOS Scalping Engine - Live Dashboard")
 
 # Sidebar
 st.sidebar.header("Settings")
 selected_symbol = st.sidebar.selectbox("Symbol", ["NIFTY", "BANKNIFTY"])
 
-# Default to 2026-01-16 for testing purposes as per previous context,
-# but today is more logical for "Live"
-default_date = datetime.strptime("2026-01-19", "%Y-%m-%d").date() # Today in sandbox context
+# Default to 2026-01-16 for testing
+default_date = datetime.strptime("2026-01-16", "%Y-%m-%d").date()
 selected_date = st.sidebar.date_input("Date", default_date)
 live_mode = st.sidebar.toggle("Live Mode (Auto-refresh)", value=False)
 
 if st.sidebar.button("Force Refresh"):
     st.rerun()
 
-# Re-init SymbolMaster
-with st.spinner("Initializing system..."):
-    SymbolMaster.initialize()
+if st.sidebar.button("Clear Cache"):
+    st.cache_resource.clear()
+    st.rerun()
 
 # Data Loading
 fetch_mode = 'live' if live_mode or selected_date == datetime.now().date() else 'backtest'
@@ -144,7 +164,6 @@ def resolve_atm_options(symbol, date):
         if df.empty:
             # Fallback to current price if no historical data found for today
             if date == datetime.now().date():
-                 # We'll just use a placeholder or try to fetch one candle
                  temp_df = st.session_state.dm.get_historical_candles(canonical, from_date=date_str, to_date=date_str, mode='live', n_bars=1)
                  if temp_df is not None and not temp_df.empty:
                      spot = temp_df.iloc[-1]['close']
@@ -177,6 +196,7 @@ else:
     st.warning(f"No index candles found for {selected_symbol} on {selected_date}")
 
 # Row 2: ATM Options side-by-side
+st.divider()
 col_ce, col_pe = st.columns(2)
 
 with col_ce:
