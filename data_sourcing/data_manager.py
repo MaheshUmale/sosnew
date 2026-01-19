@@ -352,7 +352,7 @@ class DataManager:
         # For now, we'll return a hardcoded value.
         return 0.5
 
-    def load_and_cache_fno_instruments(self, mode='backtest'):
+    def load_and_cache_fno_instruments(self, mode='backtest', target_date=None):
         nifty_spot = self.get_last_traded_price('NSE|INDEX|NIFTY', mode=mode)
         banknifty_spot = self.get_last_traded_price('NSE|INDEX|BANKNIFTY', mode=mode)
 
@@ -361,10 +361,10 @@ class DataManager:
             "BANKNIFTY": banknifty_spot
         }
 
-        self.fno_instruments = self.instrument_loader.get_upstox_instruments(["NIFTY", "BANKNIFTY"], current_spots)
+        self.fno_instruments = self.instrument_loader.get_upstox_instruments(["NIFTY", "BANKNIFTY"], current_spots, target_date=target_date)
         return self.fno_instruments
 
-    def get_atm_option_details(self, symbol, side, spot_price=None, mode='backtest'):
+    def get_atm_option_details(self, symbol, side, spot_price=None, mode='backtest', target_date=None):
         instrument_data = self.fno_instruments.get(symbol)
         if not instrument_data:
             print(f"[DataManager] Error: Instrument data not found for {symbol}. Make sure fno_instruments is loaded.")
@@ -372,7 +372,14 @@ class DataManager:
 
         if spot_price is None:
             full_symbol = "NSE|INDEX|NIFTY" if symbol == "NIFTY" else "NSE|INDEX|BANKNIFTY"
-            spot_price = self.get_last_traded_price(full_symbol, mode=mode)
+            if target_date:
+                # For historical ATM resolution, get spot from candles
+                candles = self.get_historical_candles(full_symbol, from_date=target_date, to_date=target_date, n_bars=1, mode=mode)
+                if candles is not None and not candles.empty:
+                    spot_price = candles.iloc[-1]['close']
+
+            if spot_price is None:
+                spot_price = self.get_last_traded_price(full_symbol, mode=mode)
         
         if not spot_price:
              print(f"[DataManager] Error: Could not get spot price for {symbol}")
