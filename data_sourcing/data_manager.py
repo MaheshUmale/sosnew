@@ -303,8 +303,8 @@ class DataManager:
                                     "put_instrument_key": item.put_options.instrument_key,
                                     "call_oi": item.call_options.market_data.oi,
                                     "put_oi": item.put_options.market_data.oi,
-                                    "call_ltp": item.call_options.market_data.last_price,
-                                    "put_ltp": item.put_options.market_data.last_price
+                                    "call_ltp": getattr(item.call_options.market_data, 'last_price', getattr(item.call_options.market_data, 'ltp', 0)),
+                                    "put_ltp": getattr(item.put_options.market_data, 'last_price', getattr(item.put_options.market_data, 'ltp', 0))
                                 })
                         chain_data = pd.DataFrame(chain)
                         print(f"[DataManager] Chain DataFrame created: {len(chain_data)} rows")

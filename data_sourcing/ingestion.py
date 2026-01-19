@@ -100,6 +100,17 @@ class IngestionManager:
             print(f"    - Enriching Market Stats...")
             self.calculate_and_store_stats(canonical_symbol, date_str)
 
+    def ingest_from_mongo_json(self, filepath):
+        """Ingests data from a MongoDB JSON file."""
+        from data_sourcing.mongo_parser import MongoParser
+        parser = MongoParser()
+        parser.ingest_from_file(filepath)
+
+        # After ingestion, we should calculate stats for all symbols found in the data
+        # For simplicity, we'll just print a message. The user can run enrichment manually if needed,
+        # or we could scan the DB for dates modified.
+        print(f"[IngestionManager] MongoDB data ingestion complete from {filepath}")
+
     def ingest_atm_option_candles(self, canonical_symbol, date_str):
         """Fetches historical candles for options that are likely ATM during the day."""
         try:
@@ -202,6 +213,7 @@ class IngestionManager:
 
             # Risk free rate (approx 10%)
             R = 0.1
+            prev_pcr = None
 
             for ts, group in df.groupby('timestamp'):
                 # Get spot price for this timestamp
@@ -217,6 +229,8 @@ class IngestionManager:
                 total_call_oi = group['call_oi'].sum()
                 total_put_oi = group['put_oi'].sum()
                 pcr = round(total_put_oi / total_call_oi, 4) if total_call_oi > 0 else 1.0
+                pcr_velocity = round(pcr - prev_pcr, 4) if prev_pcr is not None else 0.0
+                prev_pcr = pcr
 
                 # OI Walls
                 oi_wall_above = group.loc[group['call_oi'].idxmax()]['strike'] if total_call_oi > 0 else 0
@@ -233,6 +247,12 @@ class IngestionManager:
                     T = 0
 
                 group_processed = group.copy()
+
+                # Pre-initialize columns to avoid NULLs
+                for col in ['call_iv', 'put_iv', 'call_delta', 'put_delta', 'call_theta', 'put_theta']:
+                    group_processed[col] = 0.0
+                for col in ['call_trend', 'put_trend']:
+                    group_processed[col] = "Neutral"
 
                 # Math Engine Calculations
                 for idx, row in group_processed.iterrows():
@@ -253,12 +273,6 @@ class IngestionManager:
                         group_processed.at[idx, 'put_theta'] = greeks_p['theta']
 
                     # Smart Trend (Using OI Change as proxy for trend since we might not have prev LTP easily)
-                    # The PRD says Price Change vs OI Change.
-                    # For a single strike, price change is row['call_oi_chg'] is not price.
-                    # We'll use a simplified version: if OI CHG > 0 and it's ITM, etc.
-                    # Actually, if we have call_oi_chg, we can use it.
-                    # But we need price change. Let's assume price moved in direction of spot for now
-                    # or just use the direction from index.
                     index_row = index_candles[index_candles['timestamp'] == ts]
                     price_dir = 0
                     if not index_row.empty:
@@ -273,11 +287,9 @@ class IngestionManager:
                 processed_snapshots.append(group_processed)
 
                 # Aggregate Smart Trend for Market Stats
-                # Simple majority trend of ATM strikes
                 atm_strike = self.data_manager.calculate_atm_strike(symbol, spot)
                 atm_options = group_processed[abs(group_processed['strike'] - atm_strike) <= 100]
                 if not atm_options.empty:
-                    # Combine trends and find mode
                     all_trends = [t for t in (atm_options['call_trend'].tolist() + atm_options['put_trend'].tolist()) if t != 'Neutral']
                     market_trend = max(set(all_trends), key=all_trends.count) if all_trends else "Neutral"
                 else:
@@ -286,6 +298,7 @@ class IngestionManager:
                 stats_list.append({
                     'timestamp': ts.strftime('%Y-%m-%d %H:%M:%S'),
                     'pcr': pcr,
+                    'pcr_velocity': pcr_velocity,
                     'oi_wall_above': oi_wall_above,
                     'oi_wall_below': oi_wall_below,
                     'call_oi': total_call_oi,

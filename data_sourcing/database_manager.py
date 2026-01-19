@@ -192,7 +192,8 @@ class DatabaseManager:
                 new_ms_cols = {
                     'call_oi': 'REAL',
                     'put_oi': 'REAL',
-                    'smart_trend': 'TEXT'
+                    'smart_trend': 'TEXT',
+                    'pcr_velocity': 'REAL'
                 }
                 for col, dtype in new_ms_cols.items():
                     if col not in ms_columns:
