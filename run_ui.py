@@ -45,13 +45,30 @@ def load_trades(symbol=None, date=None):
         df = pd.read_sql(query, db.conn)
     return df
 
-def load_candles(symbol, date):
-    from data_sourcing.database_manager import DatabaseManager
-    db_manager = DatabaseManager(DB_PATH)
-    query = f"SELECT * FROM historical_candles WHERE symbol = '{symbol}' AND DATE(timestamp) = '{date}' ORDER BY timestamp"
-    with db_manager as db:
-        df = pd.read_sql(query, db.conn)
-    return df
+def load_candles(symbol, date, mode='backtest'):
+    """Loads candles from DB with optional API fallback if mode='live'."""
+    # Convert date to string for DataManager
+    date_str = date.strftime('%Y-%m-%d') if not isinstance(date, str) else date
+
+    # We use DataManager for consistent canonicalization and API fallback
+    try:
+        from data_sourcing.data_manager import DataManager
+        # Reuse cached DataManager if available in session state, else create new
+        if 'dm' not in st.session_state:
+            st.session_state.dm = DataManager()
+
+        # DataManager.get_historical_candles handles DB query + remote fallback
+        df = st.session_state.dm.get_historical_candles(
+            symbol,
+            from_date=date_str,
+            to_date=date_str,
+            mode=mode,
+            n_bars=1000 # Fetch more bars for a full day view
+        )
+        return df if df is not None else pd.DataFrame()
+    except Exception as e:
+        st.error(f"Error loading candles for {symbol}: {e}")
+        return pd.DataFrame()
 
 @st.cache_resource
 def get_data_manager():
@@ -91,50 +108,78 @@ def render_chart(candles, trades, title, div_id, height=400):
                     })
 
     html_template = f"""
-    <div id="{div_id}_container" style="height: {height}px; width: 100%;">
+    <div id="{div_id}_wrapper" style="height: {height}px; width: 100%; background-color: #131722; position: relative;">
         <div id="{div_id}" style="height: 100%; width: 100%;"></div>
+        <div id="{div_id}_loading" style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); color: #555; font-family: sans-serif;">
+            {title} - Initializing Chart...
+        </div>
     </div>
     <script src="https://unpkg.com/lightweight-charts/dist/lightweight-charts.standalone.production.js"></script>
     <script>
         (function() {{
-            const container = document.getElementById('{div_id}');
-            const chart = LightweightCharts.createChart(container, {{
-                width: container.clientWidth || 600,
-                height: {height},
-                layout: {{
-                    background: {{ type: 'solid', color: '#131722' }},
-                    textColor: '#d1d4dc',
-                }},
-                grid: {{
-                    vertLines: {{ color: '#2B2B43' }},
-                    horzLines: {{ color: '#2B2B43' }},
-                }},
-                timeScale: {{
-                    timeVisible: true,
-                    secondsVisible: false,
-                }},
-            }});
+            function initChart() {{
+                const container = document.getElementById('{div_id}');
+                const loading = document.getElementById('{div_id}_loading');
 
-            const candleSeries = chart.addCandlestickSeries({{
-                upColor: '#26a69a', downColor: '#ef5350', borderVisible: false,
-                wickUpColor: '#26a69a', wickDownColor: '#ef5350',
-            }});
+                if (!window.LightweightCharts) {{
+                    console.log("Waiting for LightweightCharts...");
+                    setTimeout(initChart, 100);
+                    return;
+                }}
 
-            const data = {json.dumps(candle_data)};
-            candleSeries.setData(data);
+                if (container.clientWidth === 0) {{
+                    console.log("Waiting for container dimensions...");
+                    setTimeout(initChart, 100);
+                    return;
+                }}
 
-            const markers = {json.dumps(markers)};
-            if (markers.length > 0) {{
-                candleSeries.setMarkers(markers);
+                if (loading) loading.style.display = 'none';
+
+                const chart = LightweightCharts.createChart(container, {{
+                    width: container.clientWidth,
+                    height: {height},
+                    layout: {{
+                        background: {{ type: 'solid', color: '#131722' }},
+                        textColor: '#d1d4dc',
+                    }},
+                    grid: {{
+                        vertLines: {{ color: '#2B2B43' }},
+                        horzLines: {{ color: '#2B2B43' }},
+                    }},
+                    timeScale: {{
+                        timeVisible: true,
+                        secondsVisible: false,
+                    }},
+                }});
+
+                const candleSeries = chart.addCandlestickSeries({{
+                    upColor: '#26a69a', downColor: '#ef5350', borderVisible: false,
+                    wickUpColor: '#26a69a', wickDownColor: '#ef5350',
+                }});
+
+                const data = {json.dumps(candle_data)};
+                if (data && data.length > 0) {{
+                    candleSeries.setData(data);
+                }}
+
+                const markers = {json.dumps(markers)};
+                if (markers && markers.length > 0) {{
+                    candleSeries.setMarkers(markers);
+                }}
+
+                const resizeObserver = new ResizeObserver(entries => {{
+                    if (entries.length === 0 || !entries[0].contentRect) return;
+                    const {{ width, height }} = entries[0].contentRect;
+                    chart.applyOptions({{ width, height }});
+                }});
+                resizeObserver.observe(container);
             }}
 
-            // Robust resizing
-            const resizeObserver = new ResizeObserver(entries => {{
-                if (entries.length === 0 || !entries[0].contentRect) return;
-                const {{ width, height }} = entries[0].contentRect;
-                chart.applyOptions({{ width, height }});
-            }});
-            resizeObserver.observe(container);
+            if (document.readyState === 'complete') {{
+                initChart();
+            }} else {{
+                window.addEventListener('load', initChart);
+            }}
         }})();
     </script>
     """
@@ -157,16 +202,16 @@ with st.spinner("Initializing system..."):
     dm = get_data_manager()
 
 # Data Loading
+# Use 'live' mode if selected_date is today or live_mode is toggled
+fetch_mode = 'live' if live_mode or selected_date == datetime.now().date() else 'backtest'
+
 db_symbol = SymbolMaster.get_upstox_key(selected_symbol)
 if not db_symbol:
     st.error(f"Could not resolve key for {selected_symbol}. Check instrument master.")
     st.stop()
 
-index_candles = load_candles(db_symbol, selected_date)
-# Fallback for index candles if the first key failed
-if index_candles.empty:
-    canonical = "NSE|INDEX|NIFTY" if selected_symbol == "NIFTY" else "NSE|INDEX|BANKNIFTY"
-    index_candles = load_candles(canonical, selected_date)
+with st.spinner(f"Loading candles for {selected_symbol}..."):
+    index_candles = load_candles(db_symbol, selected_date, mode=fetch_mode)
 
 trades_df = load_trades(db_symbol, selected_date)
 
@@ -223,7 +268,7 @@ with col_ce:
     st.write("### ATM CE Chart")
     if atm_ce:
         ce_key, ce_name = atm_ce
-        ce_candles = load_candles(ce_key, selected_date)
+        ce_candles = load_candles(ce_key, selected_date, mode=fetch_mode)
         if not ce_candles.empty:
             st.components.v1.html(render_chart(ce_candles, trades_df, ce_name, "ce_chart", height=300), height=320)
         else:
@@ -235,7 +280,7 @@ with col_pe:
     st.write("### ATM PE Chart")
     if atm_pe:
         pe_key, pe_name = atm_pe
-        pe_candles = load_candles(pe_key, selected_date)
+        pe_candles = load_candles(pe_key, selected_date, mode=fetch_mode)
         if not pe_candles.empty:
             st.components.v1.html(render_chart(pe_candles, trades_df, pe_name, "pe_chart", height=300), height=320)
         else:
@@ -261,7 +306,7 @@ if not trades_df.empty:
 
     with t_col2:
         st.write(f"#### Trade Chart: {selected_trade['instrument_key']}")
-        opt_candles = load_candles(selected_trade['instrument_key'], selected_date)
+        opt_candles = load_candles(selected_trade['instrument_key'], selected_date, mode=fetch_mode)
         if not opt_candles.empty:
             st.components.v1.html(render_chart(opt_candles, trades_df, selected_trade['instrument_key'], "trade_opt_chart", height=300), height=320)
         else:
