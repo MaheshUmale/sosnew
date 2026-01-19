@@ -100,6 +100,8 @@
 
     <script>
         let series = {};
+        let charts = {};
+        let isFirstLoad = true;
         let markers = { main: [], ce: [], pe: [] };
 
         function createChart(containerId, height) {
@@ -133,6 +135,7 @@
                 chart.applyOptions({ width: container.clientWidth });
             });
 
+            charts[containerId] = chart;
             return { chart, series: candlestickSeries };
         }
 
@@ -177,8 +180,6 @@
             const live = document.getElementById('live-mode').checked;
             const mode = live ? 'live' : 'backtest';
 
-            console.log("Loading data...");
-
             try {
                 // Fetch Index
                 const indexRes = await fetch(`/api/candles?symbol=${symbol}&date=${date}&mode=${mode}`);
@@ -186,25 +187,21 @@
                 if (indexData.data && indexData.data.length > 0) {
                     series.main.setData(indexData.data);
                     document.getElementById('index-title').innerText = `${indexData.symbol} Index`;
-                    setTimeout(() => mainChart.timeScale().fitContent(), 100);
+                    if (isFirstLoad) setTimeout(() => mainChart.timeScale().fitContent(), 100);
                 }
 
                 // Resolve Options
                 const atmRes = await fetch(`/api/atm_options?symbol=${symbol}&date=${date}`);
                 const atm = await atmRes.json();
-                console.log("ATM resolved:", atm);
 
                 if (atm.ce) {
                     const ceRes = await fetch(`/api/candles?symbol=${atm.ce.key}&date=${date}&mode=${mode}`);
                     const ceData = await ceRes.json();
                     if (ceData.data && ceData.data.length > 0) {
-                        console.log(`Setting CE data: ${ceData.data.length} bars`);
                         series.ce.setData(ceData.data);
                         document.getElementById('ce-title').innerText = `ATM CE: ${atm.ce.name}`;
-                        setTimeout(() => ceChart.timeScale().fitContent(), 100);
+                        if (isFirstLoad) setTimeout(() => ceChart.timeScale().fitContent(), 100);
                         applyMarkers(series.ce, atm.ce.key, date);
-                    } else {
-                        console.warn("No CE data found");
                     }
                 }
 
@@ -212,15 +209,14 @@
                     const peRes = await fetch(`/api/candles?symbol=${atm.pe.key}&date=${date}&mode=${mode}`);
                     const peData = await peRes.json();
                     if (peData.data && peData.data.length > 0) {
-                        console.log(`Setting PE data: ${peData.data.length} bars`);
                         series.pe.setData(peData.data);
                         document.getElementById('pe-title').innerText = `ATM PE: ${atm.pe.name}`;
-                        setTimeout(() => peChart.timeScale().fitContent(), 100);
+                        if (isFirstLoad) setTimeout(() => peChart.timeScale().fitContent(), 100);
                         applyMarkers(series.pe, atm.pe.key, date);
-                    } else {
-                        console.warn("No PE data found");
                     }
                 }
+
+                isFirstLoad = false;
             } catch (e) {
                 console.error("Load failed:", e);
             }
