@@ -46,7 +46,7 @@ class DataManager:
                 pass 
         SymbolMaster.initialize()
 
-    def get_last_traded_price(self, symbol):
+    def get_last_traded_price(self, symbol, mode='backtest'):
         """
         Fetches the Last Traded Price (LTP) for a given symbol using multiple sources.
         Prioritizes direct LTP APIs over historical candle fetching.
@@ -94,7 +94,7 @@ class DataManager:
 
         # 3. Fallback to historical candles (slowest)
         print(f"[DataManager] Falling back to historical candles for {canonical_symbol} LTP")
-        candles = self.get_historical_candles(symbol, n_bars=1)
+        candles = self.get_historical_candles(symbol, n_bars=1, mode=mode)
         if candles is not None and not candles.empty:
             ltp = candles.iloc[-1]['close']
             print(f"[DataManager] LTP for {canonical_symbol} from Historical Candles: {ltp}")
@@ -352,9 +352,9 @@ class DataManager:
         # For now, we'll return a hardcoded value.
         return 0.5
 
-    def load_and_cache_fno_instruments(self):
-        nifty_spot = self.get_last_traded_price('NSE|INDEX|NIFTY')
-        banknifty_spot = self.get_last_traded_price('NSE|INDEX|BANKNIFTY')
+    def load_and_cache_fno_instruments(self, mode='backtest'):
+        nifty_spot = self.get_last_traded_price('NSE|INDEX|NIFTY', mode=mode)
+        banknifty_spot = self.get_last_traded_price('NSE|INDEX|BANKNIFTY', mode=mode)
 
         current_spots = {
             "NIFTY": nifty_spot,
@@ -364,7 +364,7 @@ class DataManager:
         self.fno_instruments = self.instrument_loader.get_upstox_instruments(["NIFTY", "BANKNIFTY"], current_spots)
         return self.fno_instruments
 
-    def get_atm_option_details(self, symbol, side, spot_price=None):
+    def get_atm_option_details(self, symbol, side, spot_price=None, mode='backtest'):
         instrument_data = self.fno_instruments.get(symbol)
         if not instrument_data:
             print(f"[DataManager] Error: Instrument data not found for {symbol}. Make sure fno_instruments is loaded.")
@@ -372,7 +372,7 @@ class DataManager:
 
         if spot_price is None:
             full_symbol = "NSE|INDEX|NIFTY" if symbol == "NIFTY" else "NSE|INDEX|BANKNIFTY"
-            spot_price = self.get_last_traded_price(full_symbol)
+            spot_price = self.get_last_traded_price(full_symbol, mode=mode)
         
         if not spot_price:
              print(f"[DataManager] Error: Could not get spot price for {symbol}")
@@ -559,7 +559,7 @@ class DataManager:
         
         try:
             full_symbol = "NSE_INDEX|Nifty 50" if "NIFTY" in symbol else "NSE_INDEX|Nifty Bank"
-            chain = self.get_option_chain(full_symbol)
+            chain = self.get_option_chain(full_symbol, mode=mode)
             if chain:
                 # Basic logic to find max OI
                 df = pd.DataFrame(chain)
