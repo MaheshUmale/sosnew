@@ -142,11 +142,15 @@ selected_date = st.sidebar.date_input("Date", datetime.strptime("2026-01-19", "%
 live_mode = st.sidebar.toggle("Live Mode (Auto-refresh)", value=True)
 
 # Re-init SymbolMaster and DataManager
-SymbolMaster.initialize()
-dm = get_data_manager()
+with st.spinner("Initializing system..."):
+    SymbolMaster.initialize()
+    dm = get_data_manager()
 
 # Data Loading
 db_symbol = SymbolMaster.get_upstox_key(selected_symbol)
+if not db_symbol:
+    st.error(f"Could not resolve key for {selected_symbol}. Check instrument master.")
+    st.stop()
 index_candles = load_candles(db_symbol, selected_date)
 trades_df = load_trades(db_symbol, selected_date)
 
@@ -176,7 +180,8 @@ def resolve_atm_options(symbol, date):
         return None, None
 
 # Resolve ATM Options
-atm_ce, atm_pe = resolve_atm_options(selected_symbol, selected_date)
+with st.spinner(f"Resolving ATM options for {selected_symbol}..."):
+    atm_ce, atm_pe = resolve_atm_options(selected_symbol, selected_date)
 
 # --- Layout ---
 
