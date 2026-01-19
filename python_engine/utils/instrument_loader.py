@@ -81,7 +81,7 @@ class InstrumentLoader:
             elif isinstance(target_date, datetime):
                 pass
             else:
-                # Handle date objects from streamlit
+                # Handle date objects
                 target_date = pd.to_datetime(str(target_date))
 
             # Strip time for comparison

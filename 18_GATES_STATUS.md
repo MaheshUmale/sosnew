@@ -41,7 +41,7 @@ The SOS Scalping Engine aims to implement 18 distinct high-probability scalping 
 3.  **Momentum Confirmation**: Integrated Volume and Price action confirmation into high-momentum gates. (RSI filters removed as per user instruction).
 4.  **Trailing SL**: Added logic to move SL to break-even when 50% of the TP target is achieved.
 5.  **Time-Based Exits**: Implemented a 30-minute hard cut-off for scalps to prevent holding during theta decay.
-6.  **Side-by-Side Visualization**: New `run_ui.py` allows analyzing index and option candles together with trade markers.
+6.  **Side-by-Side Visualization**: New UI dashboard (`ui/server.py`) allows analyzing index and option candles together with trade markers using a high-performance FastAPI/JS architecture.
 
 ## Next Steps
 

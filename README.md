@@ -11,7 +11,7 @@ To run a complete backtest session (Ingestion + Backtest + Report):
 python run.py --mode backtest --symbol NIFTY --from-date 2026-01-12 --to-date 2026-01-16
 
 # 2. View performance UI (Side-by-Side Charts)
-PYTHONPATH=. python ui/server.py
+python ui/server.py
 ```
 
 ---
@@ -81,7 +81,7 @@ A professional dashboard to analyze trades side-by-side on Index and Option prem
 
 High-performance, multi-threaded dashboard using native JavaScript and `lightweight-charts`.
 ```bash
-PYTHONPATH=. python ui/server.py
+python ui/server.py
 ```
 - **Robust Rendering**: Native JS implementation ensures stability and performance.
 - **Persistent Zoom**: The dashboard preserves your zoom/pan levels during live updates.

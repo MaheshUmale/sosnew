@@ -6,6 +6,10 @@ from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from python_engine.utils.symbol_master import MASTER as SymbolMaster
+import sys
+# Add project root to sys.path to allow running this script directly
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 from data_sourcing.data_manager import DataManager
 from data_sourcing.database_manager import DatabaseManager
 
