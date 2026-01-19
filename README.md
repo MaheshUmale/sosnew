@@ -48,8 +48,11 @@ If you prefer to bulk-load data before testing:
 # Ingest Index Candles + Daily Option Chain snapshots
 python -m data_sourcing.ingestion --symbol NIFTY --from_date 2026-01-12 --to_date 2026-01-16
 
-# Ingest strike-wise raw data from MongoDB JSON snapshots
-python data_sourcing/mongo_parser.py path/to/your_mongo_data.json
+# Ingest strike-wise raw data from MongoDB directly
+python data_sourcing/mongo_parser.py --uri "mongodb://localhost:27017/" --db "upstox_strategy_db" --col "raw_tick_data"
+
+# Or via IngestionManager CLI
+python data_sourcing/ingestion.py --mongo --mongo-uri "mongodb://localhost:27017/"
 
 # Sync minute-by-minute historical OI for Smart Trend analysis
 python backfill_trendlyne.py --full --date 2026-01-12 --symbol NIFTY
