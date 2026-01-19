@@ -11,6 +11,10 @@ To run a complete backtest session (Ingestion + Backtest + Report):
 python run.py --mode backtest --symbol NIFTY --from-date 2026-01-12 --to-date 2026-01-16
 
 # 2. View performance UI (Side-by-Side Charts)
+# Recommended: FastAPI Dashboard (Native JS)
+PYTHONPATH=. python ui/server.py
+
+# Optional: Streamlit Dashboard
 streamlit run run_ui.py
 ```
 
@@ -72,16 +76,29 @@ python final_backtest_report.py
 
 #### **Visualizer Dashboard (UI)**
 A professional dashboard to analyze trades side-by-side on Index and Option premium charts.
+
+**Option A: FastAPI Dashboard (Recommended)**
+High-performance, multi-threaded dashboard using native JavaScript and `lightweight-charts`.
+```bash
+PYTHONPATH=. python ui/server.py
+```
+- **Robust Rendering**: Fixes "Black Screen" issues seen in Streamlit.
+- **Trade Markers**: Entry/Exit arrows plotted exactly on candles.
+- **Side-by-Side View**: Compare Index movement vs ATM CE/PE premiums.
+
+**Option B: Streamlit Dashboard**
 ```bash
 streamlit run run_ui.py
 ```
-- **Trade Markers**: Entry/Exit arrows plotted exactly on candles.
-- **Side-by-Side View**: Compare Index movement vs Option premium decay.
-- **Live Mode**: Toggle for real-time chart updates.
 
 ---
 
 ## 💎 Key Optimizations (Jan 2026)
+
+### **0. System Stability & Fixes**
+- **Thread-Safe Database**: Implemented `threading.local()` for SQLite to support multi-threaded UI environments (FastAPI/Streamlit) without `ProgrammingError`.
+- **Reliable Holidays**: Replaced unreliable NSE holiday API calls with a hardcoded list for 2026.
+- **Historical Expiry Resolution**: Improved logic to correctly identify and fetch historical option contracts for any past backtest date.
 
 ### **1. Standardized Symbology**
 Adopted OpenAlgo-style mapping. Internal logic is decoupled from broker keys, supporting seamless fallback between multiple data providers.
