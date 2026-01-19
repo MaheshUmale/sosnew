@@ -41,7 +41,7 @@ class DataManager:
                         print(f"[DataManager] Found {len(new_holidays)} new holidays.")
                         self.db_manager.store_holidays(new_holidays)
                         self.holidays.extend(new_holidays)
-            except:
+            except Exception as e:
                 pass 
         SymbolMaster.initialize()
 
@@ -57,7 +57,7 @@ class DataManager:
                         return response.data[resp_key].last_price
                     if len(response.data) == 1:
                         return list(response.data.values())[0].last_price
-        except: pass
+        except Exception as e: pass
 
         if "NIFTY" in canonical_symbol.upper():
             try:
@@ -67,7 +67,7 @@ class DataManager:
                     for index in indices_data['data']:
                         if index.get('index', '').upper() == target_name:
                             return index.get('last')
-            except: pass
+            except Exception as e: pass
 
         candles = self.get_historical_candles(symbol, n_bars=1, mode=mode)
         if candles is not None and not candles.empty:
@@ -88,10 +88,10 @@ class DataManager:
         canonical_symbol = SymbolMaster.get_canonical_ticker(symbol)
         if isinstance(from_date, str):
             try: from_date = datetime.strptime(from_date, '%Y-%m-%d %H:%M:%S')
-            except: from_date = datetime.strptime(from_date, '%Y-%m-%d')
+            except Exception as e: from_date = datetime.strptime(from_date, '%Y-%m-%d')
         if isinstance(to_date, str):
             try: to_date = datetime.strptime(to_date, '%Y-%m-%d %H:%M:%S')
-            except: to_date = datetime.strptime(to_date, '%Y-%m-%d')
+            except Exception as e: to_date = datetime.strptime(to_date, '%Y-%m-%d')
             
         if to_date is None: to_date = datetime.now()
         if from_date is None: from_date = to_date - timedelta(days=5)
@@ -125,7 +125,7 @@ class DataManager:
                     data.reset_index(inplace=True)
                     data.rename(columns={'datetime': 'timestamp'}, inplace=True)
                     data_to_store = data
-            except: pass
+            except Exception as e: pass
 
         if data_to_store is None:
             try:
@@ -144,7 +144,7 @@ class DataManager:
                         df = pd.DataFrame(response.data.candles, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume', 'oi'])
                         df['timestamp'] = pd.to_datetime(df['timestamp']).dt.tz_localize(None)
                         data_to_store = df
-            except: pass
+            except Exception as e: pass
 
         if data_to_store is not None and not data_to_store.empty:
             self.db_manager.store_historical_candles(canonical_symbol, exchange, interval, data_to_store)
@@ -200,7 +200,7 @@ class DataManager:
                                     "put_ltp": getattr(item.put_options.market_data, 'last_price', getattr(item.put_options.market_data, 'ltp', 0))
                                 })
                         chain_data = pd.DataFrame(chain)
-        except: pass
+        except Exception as e: pass
 
         if (chain_data is None or chain_data.empty) and stock_id:
             expiries = self.trendlyne_client.get_expiry_dates(stock_id)
@@ -245,7 +245,7 @@ class DataManager:
         try:
             atm_strike = min(instrument_data['options'], key=lambda x: abs(x['strike'] - spot_price))
             return (atm_strike['ce'], atm_strike['ce_trading_symbol']) if side == 'BUY' else (atm_strike['pe'], atm_strike['pe_trading_symbol'])
-        except: return None, None
+        except Exception as e: return None, None
 
     def get_historical_candle_for_timestamp(self, symbol, timestamp):
         dt = datetime.fromtimestamp(timestamp)
@@ -277,7 +277,7 @@ class DataManager:
             if not key: return None, None
             actual_tsym = SymbolMaster.get_ticker_from_key(key)
             return key, (actual_tsym if actual_tsym and actual_tsym != key else trading_symbol)
-        except: return None, None
+        except Exception as e: return None, None
 
     def get_pcr(self, symbol, date=None, timestamp=None, mode='backtest'):
         target_date = datetime.strptime(date, '%Y-%m-%d') if date else datetime.now()
@@ -288,7 +288,7 @@ class DataManager:
                     target_ts = pd.to_datetime(timestamp)
                     return float(stats.iloc[(pd.to_datetime(stats['timestamp']) - target_ts).abs().argsort()[:1]].iloc[0]['pcr'])
                 return float(stats.iloc[-1]['pcr'])
-        except: pass
+        except Exception as e: pass
         if mode == 'backtest': return 1.0
         data = self.nse_client.get_option_chain(symbol, indices=True)
         if data and data.get('filtered'):
@@ -309,11 +309,22 @@ class DataManager:
                     calls, puts = df[df['strike'] > spot], df[df['strike'] < spot]
                     if not calls.empty: oi_above = calls.loc[calls['call_oi'].idxmax()]['strike']
                     if not puts.empty: oi_below = puts.loc[puts['put_oi'].idxmax()]['strike']
-        except: pass
+        except Exception as e: pass
         smart_trend = "Neutral"
         try:
             date_str = pd.to_datetime(timestamp, unit='s').strftime('%Y-%m-%d')
             stats = self.db_manager.get_market_stats(symbol, date_str, pd.to_datetime(timestamp, unit='s').strftime('%Y-%m-%d %H:%M:%S'))
             if not stats.empty: smart_trend = stats.iloc[-1].get('smart_trend', 'Neutral')
-        except: pass
+        except Exception as e: pass
         return Sentiment(pcr=pcr, advances=0, declines=0, pcr_velocity=0.0, oi_wall_above=oi_above, oi_wall_below=oi_below, smart_trend=smart_trend)
+
+    def get_option_delta(self, instrument_key):
+        """Returns the delta for the given option instrument key from the DB."""
+        try:
+            with self.db_manager as db:
+                query = "SELECT call_delta, put_delta FROM option_chain_data WHERE (call_instrument_key = ? OR put_instrument_key = ?) ORDER BY timestamp DESC LIMIT 1"
+                row = db.conn.execute(query, (instrument_key, instrument_key)).fetchone()
+                if row:
+                    return row[0] if row[0] != 0 else row[1]
+        except Exception as e: pass
+        return 0.5 # Default
