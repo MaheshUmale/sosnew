@@ -43,17 +43,17 @@ class OrderOrchestrator:
         trade_closed = False
         if position.side == TradeSide.BUY:
             if candle.low <= position.stop_loss:
-                self._close_position(position, position.stop_loss, candle.timestamp, TradeOutcome.LOSS)
+                self._close_position(position, position.stop_loss, candle.timestamp, TradeOutcome.LOSS, 'SL_HIT')
                 trade_closed = True
             elif candle.high >= position.take_profit:
-                self._close_position(position, position.take_profit, candle.timestamp, TradeOutcome.WIN)
+                self._close_position(position, position.take_profit, candle.timestamp, TradeOutcome.WIN, 'TP_HIT')
                 trade_closed = True
         elif position.side == TradeSide.SELL:
             if candle.high >= position.stop_loss:
-                self._close_position(position, position.stop_loss, candle.timestamp, TradeOutcome.LOSS)
+                self._close_position(position, position.stop_loss, candle.timestamp, TradeOutcome.LOSS, 'SL_HIT')
                 trade_closed = True
             elif candle.low <= position.take_profit:
-                self._close_position(position, position.take_profit, candle.timestamp, TradeOutcome.WIN)
+                self._close_position(position, position.take_profit, candle.timestamp, TradeOutcome.WIN, 'TP_HIT')
                 trade_closed = True
 
         if trade_closed:
@@ -177,11 +177,14 @@ class OrderOrchestrator:
             trade_id=trade_id,
             pattern_id=definition.pattern_id,
             symbol=symbol_to_trade,
+            instrument_key=instrument_key_to_trade,
             side=side,
             entry_time=candle.timestamp,
             entry_price=entry_price,
             stop_loss=stop_loss,
-            take_profit=take_profit
+            take_profit=take_profit,
+            sl_price=stop_loss,
+            tp_price=take_profit
         )
         self._trade_log.log_trade(trade)
 
@@ -200,11 +203,13 @@ class OrderOrchestrator:
         self._open_positions[pos_key] = position
         print(f"Opened position for {symbol_to_trade} ({definition.pattern_id}) at {entry_price}")
 
-    def _close_position(self, position: Position, exit_price: float, exit_time, outcome: TradeOutcome):
+    def _close_position(self, position: Position, exit_price: float, exit_time, outcome: TradeOutcome, exit_reason: str = None):
         trade = self._trade_log.get_trade(position.trade_id)
         if trade:
             trade.exit_price = exit_price
             trade.exit_time = exit_time
             trade.outcome = outcome
+            trade.status = 'CLOSED'
+            trade.exit_reason = exit_reason or ('WIN' if outcome == TradeOutcome.WIN else 'LOSS')
             self._trade_log.update_trade(trade)
-            print(f"Closed position for {position.symbol} at {exit_price} with outcome {outcome}")
+            print(f"Closed position for {position.symbol} at {exit_price} with outcome {outcome} reason {trade.exit_reason}")

@@ -50,8 +50,7 @@
             "conditions": [
                 "close > vars.ema20",
                 "volume > vars.vol_avg * 1.2",
-                "close > open",
-                "rsi(history, 14) > 55"
+                "close > open"
             ],
             "capture": {},
             "timeout": 0

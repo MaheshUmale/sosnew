@@ -16,16 +16,14 @@ class TradeLog:
         self._persist_to_db(trade)
 
     def update_trade(self, trade: Trade):
-        if trade.trade_id in self._trades:
-            self._trades[trade.trade_id] = trade
-        else:
-            self._trades[trade.trade_id] = trade # log_trade equivalent but avoiding recursion if any
+        self._trades[trade.trade_id] = trade
         self._persist_to_db(trade)
 
     def _persist_to_db(self, trade: Trade):
         pnl = 0
         if trade.outcome != TradeOutcome.IN_PROGRESS and trade.exit_price is not None:
-            pnl = trade.exit_price - trade.entry_price if trade.side == TradeSide.BUY else trade.entry_price - trade.exit_price
+            # PnL for 1 lot (assuming option multiplier is 1 for now or handled elsewhere)
+            pnl = (trade.exit_price - trade.entry_price) * trade.quantity if trade.side == TradeSide.BUY else (trade.entry_price - trade.exit_price) * trade.quantity
 
         entry_time_str = datetime.fromtimestamp(trade.entry_time).strftime('%Y-%m-%d %H:%M:%S') if trade.entry_time else None
         exit_time_str = datetime.fromtimestamp(trade.exit_time).strftime('%Y-%m-%d %H:%M:%S') if trade.exit_time else None
@@ -34,6 +32,7 @@ class TradeLog:
             'trade_id': trade.trade_id,
             'pattern_id': trade.pattern_id,
             'symbol': trade.symbol,
+            'instrument_key': trade.instrument_key,
             'side': trade.side.value if hasattr(trade.side, 'value') else str(trade.side),
             'entry_time': entry_time_str,
             'entry_price': trade.entry_price,
@@ -41,6 +40,11 @@ class TradeLog:
             'exit_price': trade.exit_price,
             'stop_loss': trade.stop_loss,
             'take_profit': trade.take_profit,
+            'sl_price': trade.sl_price,
+            'tp_price': trade.tp_price,
+            'quantity': trade.quantity,
+            'status': trade.status,
+            'exit_reason': trade.exit_reason,
             'outcome': trade.outcome.value if hasattr(trade.outcome, 'value') else str(trade.outcome),
             'pnl': pnl
         }

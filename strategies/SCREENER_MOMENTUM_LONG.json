@@ -56,8 +56,7 @@
             "id": "TRIGGER",
             "conditions": [
                 "close > vars.range_max",
-                "volume > prev_candle.volume",
-                "rsi(history, 14) > 55"
+                "volume > prev_candle.volume"
             ],
             "timeout": 0,
             "capture": {}
