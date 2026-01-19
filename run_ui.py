@@ -9,6 +9,7 @@ import time
 try:
     from python_engine.utils.symbol_master import MASTER as SymbolMaster
     from python_engine.core.trade_logger import TradeLog
+    from data_sourcing.data_manager import DataManager
 except ImportError:
     # Fallback for different directory structures
     import sys
@@ -16,6 +17,7 @@ except ImportError:
     sys.path.append(os.getcwd())
     from python_engine.utils.symbol_master import MASTER as SymbolMaster
     from python_engine.core.trade_logger import TradeLog
+    from data_sourcing.data_manager import DataManager
 
 # Configuration
 try:
@@ -54,7 +56,11 @@ def load_candles(symbol, date):
     conn.close()
     return df
 
-def render_chart(candles, trades, title, div_id):
+@st.cache_resource
+def get_data_manager():
+    return DataManager()
+
+def render_chart(candles, trades, title, div_id, height=400):
     # Convert candles to JSON for the JS library
     candle_data = []
     for _, row in candles.iterrows():
@@ -87,13 +93,13 @@ def render_chart(candles, trades, title, div_id):
                 })
 
     html_template = f"""
-    <div id="{div_id}" style="height: 400px; width: 100%;"></div>
+    <div id="{div_id}" style="height: {height}px; width: 100%;"></div>
     <script src="https://unpkg.com/lightweight-charts/dist/lightweight-charts.standalone.production.js"></script>
     <script>
         (function() {{
             const chart = LightweightCharts.createChart(document.getElementById('{div_id}'), {{
                 width: document.getElementById('{div_id}').clientWidth,
-                height: 400,
+                height: {height},
                 layout: {{
                     backgroundColor: '#131722',
                     textColor: '#d1d4dc',
@@ -120,7 +126,7 @@ def render_chart(candles, trades, title, div_id):
             candleSeries.setMarkers(markers);
 
             window.addEventListener('resize', () => {{
-                chart.resize(document.getElementById('{div_id}').clientWidth, 400);
+                chart.resize(document.getElementById('{div_id}').clientWidth, {height});
             }});
         }})();
     </script>
@@ -130,7 +136,7 @@ def render_chart(candles, trades, title, div_id):
 # Streamlit UI
 st.set_page_config(layout="wide", page_title="SOS Scalping Dashboard")
 
-st.title("🚀 SOS Scalping Engine - Trade Analysis")
+st.title("🚀 SOS Scalping Engine - Live Dashboard")
 
 # Sidebar
 st.sidebar.header("Settings")
@@ -138,8 +144,9 @@ selected_symbol = st.sidebar.selectbox("Symbol", ["NIFTY", "BANKNIFTY"])
 selected_date = st.sidebar.date_input("Date", datetime.strptime("2026-01-16", "%Y-%m-%d").date())
 live_mode = st.sidebar.toggle("Live Mode (Auto-refresh)", value=False)
 
-# Re-init SymbolMaster to ensure we use the singleton
+# Re-init SymbolMaster and DataManager
 SymbolMaster.initialize()
+dm = get_data_manager()
 
 if live_mode:
     st.sidebar.info("Refreshing every 5 seconds...")
@@ -148,49 +155,94 @@ if live_mode:
 
 # Data Loading
 db_symbol = SymbolMaster.get_upstox_key(selected_symbol)
-
+index_candles = load_candles(db_symbol, selected_date)
 trades_df = load_trades(db_symbol, selected_date)
 
-if not trades_df.empty:
-    st.subheader(f"Trades for {selected_symbol} on {selected_date}")
+@st.cache_data(ttl=60)
+def resolve_atm_options(symbol, date):
+    # Get last price for that date
+    conn = get_db_connection()
+    canonical = SymbolMaster.get_upstox_key(symbol)
+    query = f"SELECT close FROM historical_candles WHERE symbol = '{canonical}' AND DATE(timestamp) = '{date}' ORDER BY timestamp DESC LIMIT 1"
+    df = pd.read_sql(query, conn)
+    conn.close()
 
-    # Selection
-    selected_trade_idx = st.selectbox("Select Trade to Visualize", trades_df.index,
-                                     format_func=lambda x: f"[{trades_df.loc[x, 'pattern_id']}] Entry: {trades_df.loc[x, 'entry_time']} @ {trades_df.loc[x, 'entry_price']}")
+    if df.empty:
+        return None, None
+
+    spot = df.iloc[0]['close']
+
+    # Use DataManager to find ATM
+    try:
+        dm.load_and_cache_fno_instruments()
+        ce_key, ce_name = dm.get_atm_option_details(symbol, 'BUY', spot)
+        pe_key, pe_name = dm.get_atm_option_details(symbol, 'SELL', spot)
+        return (ce_key, ce_name), (pe_key, pe_name)
+    except Exception as e:
+        st.error(f"Error resolving ATM options: {e}")
+        return None, None
+
+# Resolve ATM Options
+atm_ce, atm_pe = resolve_atm_options(selected_symbol, selected_date)
+
+# --- Layout ---
+
+# Row 1: Index Chart
+st.write(f"### {selected_symbol} Index")
+if not index_candles.empty:
+    st.components.v1.html(render_chart(index_candles, trades_df, f"{selected_symbol} Index", "index_chart", height=400), height=420)
+else:
+    st.warning(f"No index candles found for {selected_symbol} on {selected_date}")
+
+# Row 2: ATM Options side-by-side
+col_ce, col_pe = st.columns(2)
+
+with col_ce:
+    st.write("### ATM CE Chart")
+    if atm_ce:
+        ce_key, ce_name = atm_ce
+        ce_candles = load_candles(ce_key, selected_date)
+        if not ce_candles.empty:
+            st.components.v1.html(render_chart(ce_candles, trades_df, ce_name, "ce_chart", height=300), height=320)
+        else:
+            st.info(f"No candles found for CE: {ce_name}")
+    else:
+        st.info("ATM CE not resolved.")
+
+with col_pe:
+    st.write("### ATM PE Chart")
+    if atm_pe:
+        pe_key, pe_name = atm_pe
+        pe_candles = load_candles(pe_key, selected_date)
+        if not pe_candles.empty:
+            st.components.v1.html(render_chart(pe_candles, trades_df, pe_name, "pe_chart", height=300), height=320)
+        else:
+            st.info(f"No candles found for PE: {pe_name}")
+    else:
+        st.info("ATM PE not resolved.")
+
+# Row 3: Trades (if any)
+st.divider()
+if not trades_df.empty:
+    st.subheader(f"Trades ({len(trades_df)})")
+
+    # Selection for specific trade visualization
+    selected_trade_idx = st.selectbox("Visualize Specific Trade", trades_df.index,
+                                     format_func=lambda x: f"[{trades_df.loc[x, 'pattern_id']}] {trades_df.loc[x, 'entry_time']} | {trades_df.loc[x, 'instrument_key']} @ {trades_df.loc[x, 'entry_price']}")
 
     selected_trade = trades_df.loc[selected_trade_idx]
 
-    # Main content: Side-by-side charts
-    col1, col2 = st.columns(2)
+    t_col1, t_col2 = st.columns([1, 2])
+    with t_col1:
+        st.write("#### Details")
+        st.json(selected_trade.to_dict())
 
-    with col1:
-        st.write("### Index Chart")
-        index_candles = load_candles(db_symbol, selected_date)
-        if not index_candles.empty:
-            st.components.v1.html(render_chart(index_candles, trades_df, f"{selected_symbol} Index", "index_chart"), height=450)
+    with t_col2:
+        st.write(f"#### Trade Chart: {selected_trade['instrument_key']}")
+        opt_candles = load_candles(selected_trade['instrument_key'], selected_date)
+        if not opt_candles.empty:
+            st.components.v1.html(render_chart(opt_candles, trades_df, selected_trade['instrument_key'], "trade_opt_chart", height=300), height=320)
         else:
-            st.warning("No index candles found for this date.")
-
-    with col2:
-        st.write("### Option Chart")
-        opt_key = selected_trade['instrument_key']
-        option_candles = load_candles(opt_key, selected_date)
-        if not option_candles.empty:
-            st.components.v1.html(render_chart(option_candles, trades_df, f"Option {opt_key}", "option_chart"), height=450)
-        else:
-            st.warning(f"No option candles found for {opt_key}.")
-
-    # Trade Details
-    st.divider()
-    st.write("### Trade Details")
-    st.json(selected_trade.to_dict())
-
+            st.warning("No candles for this trade's option.")
 else:
-    st.warning(f"No trades found for {selected_symbol} on {selected_date}")
-    # Still show the index chart if available
-    st.write("### Index Chart")
-    index_candles = load_candles(db_symbol, selected_date)
-    if not index_candles.empty:
-        st.components.v1.html(render_chart(index_candles, pd.DataFrame(), f"{selected_symbol} Index", "index_chart_no_trades"), height=450)
-    else:
-        st.info("No index candles found for this date either. Try another date or run backtest.")
+    st.info(f"No trades recorded for {selected_symbol} on {selected_date}")

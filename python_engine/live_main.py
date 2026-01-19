@@ -125,7 +125,7 @@ class LiveTradingEngine:
 
 
     def _load_instruments(self):
-        """Initial instrument loading. Indices are always loaded. Options are limited to ATM to avoid 403."""
+        """Initial instrument loading. Indices are always loaded. Options are +-5 strikes."""
         # 1. Subscribe to Indices
         instrument_keys_to_subscribe = []
         for s in self.symbols:
@@ -134,29 +134,28 @@ class LiveTradingEngine:
                 instrument_keys_to_subscribe.append(key)
         self.subscribed_instruments.update(instrument_keys_to_subscribe)
 
-        # 2. Subscribe to ATM Options (Dynamic)
-        # We fetch current spot prices to determine ATM
+        # 2. Subscribe to Options (+-5 strikes)
         try:
-            print("[LiveTradingEngine] Loading FNO master to resolve ATM picks...")
-            self.data_manager.load_and_cache_fno_instruments()
-        except Exception as e:
-            print(f"[LiveTradingEngine] Failed to load FNO master: {e}")
+            print("[LiveTradingEngine] Loading FNO master to resolve ATM picks and surrounding strikes...")
+            # load_and_cache_fno_instruments fetches LTP and calls get_upstox_instruments which now uses +-5 strikes
+            self.data_manager.load_and_cache_fno_instruments(mode='live')
 
-        for s in ["NIFTY", "BANKNIFTY"]:
-            try:
-                spot = self.data_manager.get_last_traded_price(s)
-                if spot:
-                    atm_strike = self.data_manager.calculate_atm_strike(s, spot)
-                    # Get CE and PE keys
-                    ce_key, ce_symbol = self.data_manager.get_atm_option_details(s, "BUY") # Proxied to ATM_CALL
-                    pe_key, pe_symbol = self.data_manager.get_atm_option_details(s, "SELL") # Proxied to ATM_PUT
-                    
-                    if ce_key: self.subscribed_instruments.add(ce_key)
-                    if pe_key: self.subscribed_instruments.add(pe_key)
-                    print(f"  [Live] Identified ATM for {s}: {ce_symbol}, {pe_symbol}")
-                    self._fno_loaded = True
-            except Exception as e:
-                print(f"  [WARN] Failed to load ATM options for {s}: {e}")
+            for s in ["NIFTY", "BANKNIFTY"]:
+                inst_data = self.data_manager.fno_instruments.get(s)
+                if inst_data and 'all_keys' in inst_data:
+                    # Filter out futures if we only want options, but user said "PE+CE + NIFTY, banknifty"
+                    # all_keys includes current future. Let's keep it for now as it doesn't hurt.
+                    # Actually, let's filter to just CE/PE to be precise if needed,
+                    # but instrument_loader now provides 11 strikes * 2 = 22 symbols per index.
+                    option_keys = [k for k in inst_data['all_keys'] if any(x in k for x in ['CE', 'PE', 'OPT'])]
+                    # Wait, Upstox keys might not have CE/PE in the key itself (it's often a number or different format)
+                    # Let's use all_keys but we know it has 23 keys (1 fut + 22 options)
+                    self.subscribed_instruments.update(inst_data['all_keys'])
+                    print(f"  [Live] Subscribed to {len(inst_data['all_keys'])} instruments for {s} (Strikes +-5)")
+
+            self._fno_loaded = True
+        except Exception as e:
+            print(f"[LiveTradingEngine] Failed to load FNO instruments: {e}")
 
     def on_message(self, message):
         """Thread-safe callback to schedule message processing on the main event loop."""
@@ -178,7 +177,8 @@ class LiveTradingEngine:
         if not hasattr(self, '_last_chain_fetch') or (now - self._last_chain_fetch).total_seconds() > 300: # Every 5 mins
             for symbol in ["NIFTY", "BANKNIFTY"]:
                 try:
-                    self.data_manager.get_option_chain(symbol)
+                    # Pass mode='live' to avoid backtest error logs
+                    self.data_manager.get_option_chain(symbol, mode='live')
                     self._last_chain_fetch = now
                 except Exception as e:
                     pass
@@ -289,7 +289,7 @@ class LiveTradingEngine:
                                     volume=int(final_candle[5]),
                                     atr=calculated_atr
                                 ),
-                                sentiment=self.data_manager.get_current_sentiment(ticker)
+                                sentiment=self.data_manager.get_current_sentiment(ticker, mode='live')
                             )
 
                             

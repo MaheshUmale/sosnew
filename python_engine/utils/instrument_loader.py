@@ -48,7 +48,7 @@ class InstrumentLoader:
             nearest_expiry = opt_df['expiry'].min()
             near_opt_df = opt_df[opt_df['expiry'] == nearest_expiry]
 
-            # --- 3. Identify the 7 Strikes (3 OTM, 1 ATM, 3 ITM) ---
+            # --- 3. Identify the 11 Strikes (5 OTM, 1 ATM, 5 ITM) ---
             unique_strikes = sorted(near_opt_df['strike_price'].unique())
 
             # Find ATM strike
@@ -60,9 +60,9 @@ class InstrumentLoader:
                 atm_strike = min(unique_strikes, key=lambda x: abs(x - spot))
                 atm_index = unique_strikes.index(atm_strike)
 
-            # Slice range: Index - 3 to Index + 3 (Total 7 strikes)
-            start_idx = max(0, atm_index - 3)
-            end_idx = min(len(unique_strikes), atm_index + 4)
+            # Slice range: Index - 5 to Index + 5 (Total 11 strikes)
+            start_idx = max(0, atm_index - 5)
+            end_idx = min(len(unique_strikes), atm_index + 6)
             selected_strikes = unique_strikes[start_idx : end_idx]
 
             # --- 4. Build Result ---
