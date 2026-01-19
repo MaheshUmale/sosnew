@@ -70,35 +70,39 @@ def render_chart(candles, trades, title, div_id, height=400):
         })
 
     markers = []
-    for _, trade in trades.iterrows():
-        # Only add markers if the symbol matches
-        if trade['symbol'] == candles['symbol'].iloc[0] or trade['instrument_key'] == candles['symbol'].iloc[0]:
-            markers.append({
-                'time': int(pd.to_datetime(trade['entry_time']).timestamp()),
-                'position': 'belowBar',
-                'color': '#2196F3',
-                'shape': 'arrowUp',
-                'text': 'Entry'
-            })
-            if trade['exit_time']:
+    if not trades.empty:
+        for _, trade in trades.iterrows():
+            # Only add markers if the symbol matches
+            if trade['symbol'] == candles['symbol'].iloc[0] or trade['instrument_key'] == candles['symbol'].iloc[0]:
                 markers.append({
-                    'time': int(pd.to_datetime(trade['exit_time']).timestamp()),
-                    'position': 'aboveBar',
-                    'color': '#e91e63',
-                    'shape': 'arrowDown',
-                    'text': f"Exit ({trade['exit_price']})"
+                    'time': int(pd.to_datetime(trade['entry_time']).timestamp()),
+                    'position': 'belowBar',
+                    'color': '#2196F3',
+                    'shape': 'arrowUp',
+                    'text': 'Entry'
                 })
+                if trade['exit_time']:
+                    markers.append({
+                        'time': int(pd.to_datetime(trade['exit_time']).timestamp()),
+                        'position': 'aboveBar',
+                        'color': '#e91e63',
+                        'shape': 'arrowDown',
+                        'text': f"Exit ({trade['exit_price']})"
+                    })
 
     html_template = f"""
-    <div id="{div_id}" style="height: {height}px; width: 100%;"></div>
+    <div id="{div_id}_container" style="height: {height}px; width: 100%;">
+        <div id="{div_id}" style="height: 100%; width: 100%;"></div>
+    </div>
     <script src="https://unpkg.com/lightweight-charts/dist/lightweight-charts.standalone.production.js"></script>
     <script>
         (function() {{
-            const chart = LightweightCharts.createChart(document.getElementById('{div_id}'), {{
-                width: document.getElementById('{div_id}').clientWidth,
+            const container = document.getElementById('{div_id}');
+            const chart = LightweightCharts.createChart(container, {{
+                width: container.clientWidth || 600,
                 height: {height},
                 layout: {{
-                    backgroundColor: '#131722',
+                    background: {{ type: 'solid', color: '#131722' }},
                     textColor: '#d1d4dc',
                 }},
                 grid: {{
@@ -120,11 +124,17 @@ def render_chart(candles, trades, title, div_id, height=400):
             candleSeries.setData(data);
 
             const markers = {json.dumps(markers)};
-            candleSeries.setMarkers(markers);
+            if (markers.length > 0) {{
+                candleSeries.setMarkers(markers);
+            }}
 
-            window.addEventListener('resize', () => {{
-                chart.resize(document.getElementById('{div_id}').clientWidth, {height});
+            // Robust resizing
+            const resizeObserver = new ResizeObserver(entries => {{
+                if (entries.length === 0 || !entries[0].contentRect) return;
+                const {{ width, height }} = entries[0].contentRect;
+                chart.applyOptions({{ width, height }});
             }});
+            resizeObserver.observe(container);
         }})();
     </script>
     """
@@ -151,7 +161,13 @@ db_symbol = SymbolMaster.get_upstox_key(selected_symbol)
 if not db_symbol:
     st.error(f"Could not resolve key for {selected_symbol}. Check instrument master.")
     st.stop()
+
 index_candles = load_candles(db_symbol, selected_date)
+# Fallback for index candles if the first key failed
+if index_candles.empty:
+    canonical = "NSE|INDEX|NIFTY" if selected_symbol == "NIFTY" else "NSE|INDEX|BANKNIFTY"
+    index_candles = load_candles(canonical, selected_date)
+
 trades_df = load_trades(db_symbol, selected_date)
 
 @st.cache_data(ttl=60)
@@ -159,10 +175,18 @@ def resolve_atm_options(symbol, date):
     # Get last price for that date
     from data_sourcing.database_manager import DatabaseManager
     db_manager = DatabaseManager(DB_PATH)
+
     canonical = SymbolMaster.get_upstox_key(symbol)
     query = f"SELECT close FROM historical_candles WHERE symbol = '{canonical}' AND DATE(timestamp) = '{date}' ORDER BY timestamp DESC LIMIT 1"
     with db_manager as db:
         df = pd.read_sql(query, db.conn)
+
+    if df.empty:
+        # Try alternate canonical
+        alt_canonical = "NSE|INDEX|NIFTY" if symbol == "NIFTY" else "NSE|INDEX|BANKNIFTY"
+        query = f"SELECT close FROM historical_candles WHERE symbol = '{alt_canonical}' AND DATE(timestamp) = '{date}' ORDER BY timestamp DESC LIMIT 1"
+        with db_manager as db:
+            df = pd.read_sql(query, db.conn)
 
     if df.empty:
         return None, None
@@ -171,9 +195,9 @@ def resolve_atm_options(symbol, date):
 
     # Use DataManager to find ATM
     try:
-        dm.load_and_cache_fno_instruments()
-        ce_key, ce_name = dm.get_atm_option_details(symbol, 'BUY', spot)
-        pe_key, pe_name = dm.get_atm_option_details(symbol, 'SELL', spot)
+        dm.load_and_cache_fno_instruments(target_date=date)
+        ce_key, ce_name = dm.get_atm_option_details(symbol, 'BUY', spot, target_date=date)
+        pe_key, pe_name = dm.get_atm_option_details(symbol, 'SELL', spot, target_date=date)
         return (ce_key, ce_name), (pe_key, pe_name)
     except Exception as e:
         st.error(f"Error resolving ATM options: {e}")

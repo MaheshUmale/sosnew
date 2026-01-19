@@ -3,8 +3,10 @@ import requests
 import gzip
 import io
 
+from datetime import datetime
+
 class InstrumentLoader:
-    def get_upstox_instruments(self, symbols=["NIFTY", "BANKNIFTY"], spot_prices={"NIFTY": 0, "BANKNIFTY": 0}):
+    def get_upstox_instruments(self, symbols=["NIFTY", "BANKNIFTY"], spot_prices={"NIFTY": 0, "BANKNIFTY": 0}, target_date=None):
         # 1. Load Instrument Master (from cache if available)
         cache_file = "upstox_instruments.json.gz"
         import os
@@ -70,8 +72,28 @@ class InstrumentLoader:
 
             # Ensure expiry is in datetime format for accurate sorting
             opt_df['expiry'] = pd.to_datetime(opt_df['expiry'], origin='unix', unit='ms')
-            nearest_expiry = opt_df['expiry'].min()
-            near_opt_df = opt_df[opt_df['expiry'] == nearest_expiry]
+
+            # Filter for expiries >= target_date
+            if target_date is None:
+                target_date = datetime.now()
+            elif isinstance(target_date, str):
+                target_date = pd.to_datetime(target_date)
+            elif isinstance(target_date, datetime):
+                pass
+            else:
+                # Handle date objects from streamlit
+                target_date = pd.to_datetime(str(target_date))
+
+            # Strip time for comparison
+            target_date_only = target_date.replace(hour=0, minute=0, second=0, microsecond=0)
+            valid_opts = opt_df[opt_df['expiry'].dt.date >= target_date_only.date()]
+
+            if valid_opts.empty:
+                print(f"[InstrumentLoader] No valid expiries found for {symbol} on/after {target_date_only.date()}. Using all.")
+                valid_opts = opt_df
+
+            nearest_expiry = valid_opts['expiry'].min()
+            near_opt_df = valid_opts[valid_opts['expiry'] == nearest_expiry]
 
             # --- 3. Identify the 11 Strikes (5 OTM, 1 ATM, 5 ITM) ---
             unique_strikes = sorted(near_opt_df['strike_price'].unique())
