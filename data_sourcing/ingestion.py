@@ -105,11 +105,17 @@ class IngestionManager:
         from data_sourcing.mongo_parser import MongoParser
         parser = MongoParser()
         parser.ingest_from_file(filepath)
-
-        # After ingestion, we should calculate stats for all symbols found in the data
-        # For simplicity, we'll just print a message. The user can run enrichment manually if needed,
-        # or we could scan the DB for dates modified.
         print(f"[IngestionManager] MongoDB data ingestion complete from {filepath}")
+
+    def ingest_from_mongo_db(self, mongo_uri="mongodb://localhost:27017/", db_name="upstox_strategy_db", collection_name="raw_tick_data"):
+        """Ingests data directly from a MongoDB instance."""
+        from data_sourcing.mongo_parser import MongoParser
+        parser = MongoParser(mongo_uri=mongo_uri)
+        count = parser.ingest_from_db(db_name=db_name, collection_name=collection_name)
+
+        # Optionally, we could trigger enrichment here, but it might be better to let
+        # the user decide as it's computationally intensive.
+        print(f"[IngestionManager] MongoDB data ingestion complete. Processed {count} snapshots.")
 
     def ingest_atm_option_candles(self, canonical_symbol, date_str):
         """Fetches historical candles for options that are likely ATM during the day."""
@@ -364,14 +370,22 @@ class IngestionManager:
 if __name__ == "__main__":
     import argparse
     parser = argparse.ArgumentParser(description="Unified Data Ingestion")
-    parser.add_argument("--symbol", type=str, required=True)
-    parser.add_argument("--from_date", type=str, required=True)
-    parser.add_argument("--to_date", type=str, required=True)
+    parser.add_argument("--symbol", type=str, required=False)
+    parser.add_argument("--from_date", type=str, required=False)
+    parser.add_argument("--to_date", type=str, required=False)
     parser.add_argument("--full-options", action="store_true", help="Fetch 1-min option snapshots (Trendlyne)")
     parser.add_argument("--force", action="store_true", help="Force re-ingestion of data if it exists")
+    parser.add_argument("--mongo", action="store_true", help="Ingest from MongoDB directly")
+    parser.add_argument("--mongo-uri", type=str, default="mongodb://localhost:27017/", help="MongoDB URI")
 
     args = parser.parse_args()
 
     SymbolMaster.initialize()
     manager = IngestionManager()
-    manager.ingest_historical_data(args.symbol, args.from_date, args.to_date, full_options=args.full_options, force=args.force)
+
+    if args.mongo:
+        manager.ingest_from_mongo_db(mongo_uri=args.mongo_uri)
+    else:
+        if not args.from_date or not args.to_date:
+             parser.error("--from_date and --to_date are required unless using --mongo")
+        manager.ingest_historical_data(args.symbol, args.from_date, args.to_date, full_options=args.full_options, force=args.force)

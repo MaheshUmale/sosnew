@@ -6,13 +6,20 @@ from python_engine.utils.symbol_master import MASTER as SymbolMaster
 import re
 
 class MongoParser:
-    def __init__(self):
+    def __init__(self, mongo_uri="mongodb://localhost:27017/"):
         self.db_manager = DatabaseManager()
+        self.mongo_uri = mongo_uri
         SymbolMaster.initialize()
 
     def parse_snapshot(self, snapshot_json):
         """Parses a single MongoDB snapshot and stores it in the database."""
-        current_ts = int(snapshot_json.get('currentTs', 0))
+        current_ts_val = snapshot_json.get('currentTs', 0)
+        try:
+            current_ts = int(current_ts_val)
+        except (ValueError, TypeError):
+            print(f"[MongoParser] Warning: Invalid currentTs value: {current_ts_val}")
+            return
+
         if not current_ts:
             return
 
@@ -22,19 +29,28 @@ class MongoParser:
 
         feeds = snapshot_json.get('feeds', {})
 
-        # 1. Identify relevant indices
+        # 1. Identify relevant indices and store as candles
         index_data = {}
         for key, feed in feeds.items():
             if "NSE_INDEX" in key:
                 name = key.split('|')[-1].upper()
                 ltpc = feed.get('fullFeed', {}).get('indexFF', {}).get('ltpc', {})
                 if ltpc:
-                    index_data[name] = ltpc.get('ltp')
-                    # Also store index candle if needed, but here we focus on option chain
+                    ltp = ltpc.get('ltp', 0)
+                    index_data[name] = ltp
+
+                    # Store as a candle to enable Greeks calculation later
+                    # Note: We only have LTP, so we use it for OHLC.
+                    index_df = pd.DataFrame([{
+                        'timestamp': timestamp_str,
+                        'open': ltp, 'high': ltp, 'low': ltp, 'close': ltp,
+                        'volume': 0, 'oi': 0
+                    }])
+                    self.db_manager.store_historical_candles(key, 'NSE', '1m', index_df)
 
         # 2. Process Options
         # Group by underlying
-        underlying_chains = {} # { underlying: [ {strike, call_oi, ...} ] }
+        underlying_chains = {} # { underlying: { strike: { ... } } }
 
         for key, feed in feeds.items():
             if "NSE_FO" in key:
@@ -44,14 +60,14 @@ class MongoParser:
                 # Resolve ticker
                 ticker = SymbolMaster.get_ticker_from_key(key)
                 if not ticker:
-                    # Try reverse resolution if it's not in master
+                    # Fallback resolution or skip
                     continue
 
-                # Parse ticker: e.g. "NIFTY 25550 PE 20 JAN 26"
-                match = re.match(r"^([A-Z]+)\s+(\d+)\s+(CE|PE)\s+(.*)$", ticker)
+                # Parse ticker: e.g. "NIFTY 25550 PE 20 JAN 26" or "BANKNIFTY 59500 CE 20 JAN 26"
+                match = re.match(r"^(.*?)\s+(\d+)\s+(CE|PE)\s+(.*)$", ticker)
                 if not match: continue
 
-                underlying = match.group(1)
+                underlying = match.group(1).strip()
                 strike = float(match.group(2))
                 opt_type = match.group(3)
                 expiry_str = match.group(4)
@@ -108,9 +124,36 @@ class MongoParser:
             if 'put_trend' not in df.columns: df['put_trend'] = "Neutral"
 
             self.db_manager.store_option_chain(canonical_underlying, df, date=date_str)
-            print(f"[MongoParser] Stored snapshot for {canonical_underlying} at {timestamp_str}")
+            print(f"[MongoParser] Stored snapshot for {canonical_underlying} at {timestamp_str} ({len(df)} strikes)")
+
+    def ingest_from_db(self, db_name="upstox_strategy_db", collection_name="raw_tick_data", query=None):
+        """Connects to MongoDB and iterates over documents to ingest data."""
+        try:
+            from pymongo import MongoClient
+            client = MongoClient(self.mongo_uri)
+            db = client[db_name]
+            collection = db[collection_name]
+
+            if query is None:
+                query = {} # Fetch all by default, or maybe filter by today?
+
+            cursor = collection.find(query).sort("currentTs", 1)
+            count = 0
+            for doc in cursor:
+                self.parse_snapshot(doc)
+                count += 1
+                if count % 100 == 0:
+                    print(f"[MongoParser] Processed {count} snapshots...")
+
+            print(f"[MongoParser] Finished ingesting {count} snapshots from MongoDB.")
+            client.close()
+            return count
+        except Exception as e:
+            print(f"[MongoParser] MongoDB ingestion failed: {e}")
+            return 0
 
     def ingest_from_file(self, filepath):
+        """Kept for backward compatibility and local testing."""
         with open(filepath, 'r') as f:
             data = json.load(f)
 
@@ -121,7 +164,17 @@ class MongoParser:
             self.parse_snapshot(data)
 
 if __name__ == "__main__":
-    import sys
-    if len(sys.argv) > 1:
-        parser = MongoParser()
-        parser.ingest_from_file(sys.argv[1])
+    import argparse
+    parser = argparse.ArgumentParser(description="MongoDB Data Ingestion Parser")
+    parser.add_argument("--uri", type=str, default="mongodb://localhost:27017/", help="MongoDB URI")
+    parser.add_argument("--db", type=str, default="upstox_strategy_db", help="Database name")
+    parser.add_argument("--col", type=str, default="raw_tick_data", help="Collection name")
+    parser.add_argument("--file", type=str, help="Ingest from JSON file instead of DB")
+
+    args = parser.parse_args()
+
+    parser_obj = MongoParser(mongo_uri=args.uri)
+    if args.file:
+        parser_obj.ingest_from_file(args.file)
+    else:
+        parser_obj.ingest_from_db(db_name=args.db, collection_name=args.col)

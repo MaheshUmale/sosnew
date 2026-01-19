@@ -48,6 +48,12 @@ If you prefer to bulk-load data before testing:
 # Ingest Index Candles + Daily Option Chain snapshots
 python -m data_sourcing.ingestion --symbol NIFTY --from_date 2026-01-12 --to_date 2026-01-16
 
+# Ingest strike-wise raw data from MongoDB directly
+python data_sourcing/mongo_parser.py --uri "mongodb://localhost:27017/" --db "upstox_strategy_db" --col "raw_tick_data"
+
+# Or via IngestionManager CLI
+python data_sourcing/ingestion.py --mongo --mongo-uri "mongodb://localhost:27017/"
+
 # Sync minute-by-minute historical OI for Smart Trend analysis
 python backfill_trendlyne.py --full --date 2026-01-12 --symbol NIFTY
 ```
@@ -90,6 +96,8 @@ PYTHONPATH=. python ui/server.py
 - **Thread-Safe Database**: Implemented `threading.local()` for SQLite to support multi-threaded UI environments (FastAPI) without `ProgrammingError`.
 - **Reliable Holidays**: Replaced unreliable NSE holiday API calls with a hardcoded list for 2026.
 - **Historical Expiry Resolution**: Improved logic to correctly identify and fetch historical option contracts for any past backtest date.
+- **Database Integrity**: Eliminated NULL values in `option_chain_data` and `market_stats` by pre-initializing Greeks/IV/Trends to 0.0/'Neutral'.
+- **Real Data Ingestion**: Added a high-fidelity MongoDB snapshot parser to ingest raw strike-wise market data (ATM ±3 strikes) for precise backtesting.
 
 ### **1. Standardized Symbology**
 Adopted OpenAlgo-style mapping. Internal logic is decoupled from broker keys, supporting seamless fallback between multiple data providers.
@@ -98,7 +106,8 @@ Adopted OpenAlgo-style mapping. Internal logic is decoupled from broker keys, su
 Every gate is now filtered by **Option Chain Buildup**:
 - **Long Buildup / Short Covering**: Permitted for LONG entries.
 - **Short Buildup / Long Unwinding**: Permitted for SHORT entries.
-- **PCR Filter**: Mandatory alignment with Put-Call Ratio boundaries (>0.8 for Bullish).
+- **PCR Filter**: Mandatory alignment with Put-Call Ratio boundaries (>1.2 for Extremely Bullish, <0.6 for Extremely Bearish).
+- **PCR Velocity**: Tracks the rate of change in Put-Call Ratio per minute for early trend detection.
 
 ### **3. Execution Hardening**
 - **Trailing Stop Loss**: Automatically moves SL to Break-even once 50% of the TP target is achieved.
