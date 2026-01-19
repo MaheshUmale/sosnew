@@ -84,9 +84,22 @@ class IngestionManager:
                 df = pd.read_sql_query(query, db.conn, params=(canonical_symbol, date_str))
             if df.empty: return
             unique_keys = set()
+            symbol_prefix = "BANKNIFTY" if "BANK" in canonical_symbol.upper() else "NIFTY"
             for _, row in df.iterrows():
                 if row['call_instrument_key']: unique_keys.add(row['call_instrument_key'])
                 if row['put_instrument_key']: unique_keys.add(row['put_instrument_key'])
+
+                # Resolve if missing
+                if not row['call_instrument_key'] or not row['put_instrument_key']:
+                    if not row['expiry']: continue
+                    expiry_dt = pd.to_datetime(row['expiry'])
+                    expiry_day, expiry_month, expiry_year = expiry_dt.strftime('%d'), expiry_dt.strftime('%b').upper(), expiry_dt.strftime('%y')
+                    for opt_type in ['CE', 'PE']:
+                        tsym = f"{symbol_prefix} {int(row['strike'])} {opt_type} {expiry_day} {expiry_month} {expiry_year}"
+                        key = SymbolMaster.get_upstox_key(tsym)
+                        if key: unique_keys.add(key)
+
+            logger.info(f"      Syncing candles for {len(unique_keys)} resolved keys...")
             for key in unique_keys:
                 if key: self.data_manager.get_historical_candles(key, from_date=date_str, to_date=date_str, mode='live')
         except Exception as e:
