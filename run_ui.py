@@ -141,8 +141,8 @@ st.title("🚀 SOS Scalping Engine - Live Dashboard")
 # Sidebar
 st.sidebar.header("Settings")
 selected_symbol = st.sidebar.selectbox("Symbol", ["NIFTY", "BANKNIFTY"])
-selected_date = st.sidebar.date_input("Date", datetime.strptime("2026-01-16", "%Y-%m-%d").date())
-live_mode = st.sidebar.toggle("Live Mode (Auto-refresh)", value=False)
+selected_date = st.sidebar.date_input("Date", datetime.strptime("2026-01-19", "%Y-%m-%d").date())
+live_mode = st.sidebar.toggle("Live Mode (Auto-refresh)", value=True)
 
 # Re-init SymbolMaster and DataManager
 SymbolMaster.initialize()
