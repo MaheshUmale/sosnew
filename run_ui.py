@@ -27,13 +27,9 @@ try:
 except:
     DB_PATH = 'sos_master_data.db'
 
-def get_db_connection():
-    conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row
-    return conn
-
 def load_trades(symbol=None, date=None):
-    conn = get_db_connection()
+    from data_sourcing.database_manager import DatabaseManager
+    db_manager = DatabaseManager(DB_PATH)
     query = "SELECT * FROM trades"
     conditions = []
     if symbol:
@@ -45,15 +41,16 @@ def load_trades(symbol=None, date=None):
         query += " WHERE " + " AND ".join(conditions)
 
     query += " ORDER BY entry_time DESC"
-    df = pd.read_sql(query, conn)
-    conn.close()
+    with db_manager as db:
+        df = pd.read_sql(query, db.conn)
     return df
 
 def load_candles(symbol, date):
-    conn = get_db_connection()
+    from data_sourcing.database_manager import DatabaseManager
+    db_manager = DatabaseManager(DB_PATH)
     query = f"SELECT * FROM historical_candles WHERE symbol = '{symbol}' AND DATE(timestamp) = '{date}' ORDER BY timestamp"
-    df = pd.read_sql(query, conn)
-    conn.close()
+    with db_manager as db:
+        df = pd.read_sql(query, db.conn)
     return df
 
 @st.cache_resource
@@ -148,11 +145,6 @@ live_mode = st.sidebar.toggle("Live Mode (Auto-refresh)", value=False)
 SymbolMaster.initialize()
 dm = get_data_manager()
 
-if live_mode:
-    st.sidebar.info("Refreshing every 5 seconds...")
-    time.sleep(5)
-    st.rerun()
-
 # Data Loading
 db_symbol = SymbolMaster.get_upstox_key(selected_symbol)
 index_candles = load_candles(db_symbol, selected_date)
@@ -161,11 +153,12 @@ trades_df = load_trades(db_symbol, selected_date)
 @st.cache_data(ttl=60)
 def resolve_atm_options(symbol, date):
     # Get last price for that date
-    conn = get_db_connection()
+    from data_sourcing.database_manager import DatabaseManager
+    db_manager = DatabaseManager(DB_PATH)
     canonical = SymbolMaster.get_upstox_key(symbol)
     query = f"SELECT close FROM historical_candles WHERE symbol = '{canonical}' AND DATE(timestamp) = '{date}' ORDER BY timestamp DESC LIMIT 1"
-    df = pd.read_sql(query, conn)
-    conn.close()
+    with db_manager as db:
+        df = pd.read_sql(query, db.conn)
 
     if df.empty:
         return None, None
@@ -246,3 +239,8 @@ if not trades_df.empty:
             st.warning("No candles for this trade's option.")
 else:
     st.info(f"No trades recorded for {selected_symbol} on {selected_date}")
+
+# Auto-refresh logic (at the end to allow rendering first)
+if live_mode:
+    time.sleep(5)
+    st.rerun()

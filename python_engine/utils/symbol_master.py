@@ -4,6 +4,7 @@ import gzip
 import io
 import pandas as pd
 import time
+import threading
 from data_sourcing.database_manager import DatabaseManager
 
 class SymbolMaster:
@@ -11,6 +12,7 @@ class SymbolMaster:
     _mappings = {}  # { "STANDARD_SYMBOL": "BROKER_KEY" }
     _reverse_mappings = {}  # { "BROKER_KEY": ("STANDARD_SYMBOL", "SEGMENT") }
     _initialized = False
+    _lock = threading.Lock()
 
     def __new__(cls):
         if cls._instance is None:
@@ -19,10 +21,11 @@ class SymbolMaster:
         return cls._instance
 
     def initialize(self):
-        if self._initialized:
-            return
+        with self._lock:
+            if self._initialized:
+                return
 
-        print("[SymbolMaster] Initializing Instrument Keys...")
+            print("[SymbolMaster] Initializing Instrument Keys...")
         cache_file = "upstox_instruments.json.gz"
         cache_age_seconds = 24 * 60 * 60
 
@@ -50,11 +53,14 @@ class SymbolMaster:
                     with open(cache_file, "rb") as f: content = f.read()
 
         if content:
-            with gzip.GzipFile(fileobj=io.BytesIO(content)) as f:
-                df = pd.read_json(f)
-            self.db_manager.store_instrument_master(df)
-            self._populate_mappings(df)
-            self._initialized = True
+            try:
+                with gzip.GzipFile(fileobj=io.BytesIO(content)) as f:
+                    df = pd.read_json(f)
+                self.db_manager.store_instrument_master(df)
+                self._populate_mappings(df)
+                self._initialized = True
+            except Exception as e:
+                print(f"  [ERROR] SymbolMaster initialization failed: {e}")
 
     def _populate_mappings(self, df):
         for _, row in df.iterrows():
