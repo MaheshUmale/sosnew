@@ -38,8 +38,10 @@ class NSEClient:
             response.raise_for_status()
             try:
                 return response.json()
-            except ValueError:
-                print(f"[NSE] Failed to decode JSON from {url}. Response started with: {response.text[:100]}")
+            except (ValueError, requests.exceptions.JSONDecodeError):
+                # Only print warning if it's not a common block page
+                if "<title>Access Denied</title>" not in response.text:
+                    print(f"[NSE] Failed to decode JSON from {url}. Response started with: {response.text[:100]}")
                 return None
         except requests.exceptions.HTTPError as e:
             print(f"[NSE] HTTP error: {e.response.status_code}")
@@ -64,17 +66,24 @@ class NSEClient:
         return self._make_get_request(url)
 
     def get_holiday_list(self):
-        url = f"{self.base_url}/api/holiday-master"
-        headers = self.headers.copy()
-        headers["Referer"] = f"{self.base_url}/resources/exchange-communication-holidays"
-        self.session.headers.update(headers)
-        try:
-            data = self._make_get_request(url)
-            if data and 'trading' in data:
-                return [h['tradingDate'] for h in data['trading']]
-        except Exception as e:
-            print(f"[NSE] Holiday fetch error: {e}")
-        return []
+        """Returns a hardcoded list of 2026 NSE holidays as per the provided dataset."""
+        return [
+            "2026-01-26", # Republic Day
+            "2026-03-03", # Holi
+            "2026-03-26", # Shri Ram Navami
+            "2026-03-31", # Shri Mahavir Jayanti
+            "2026-04-03", # Good Friday
+            "2026-04-14", # Dr. Baba Saheb Ambedkar Jayanti
+            "2026-05-01", # Maharashtra Day
+            "2026-05-28", # Bakri Id
+            "2026-06-26", # Muharram
+            "2026-09-14", # Ganesh Chaturthi
+            "2026-10-02", # Mahatma Gandhi Jayanti
+            "2026-10-20", # Dussehra
+            "2026-11-10", # Diwali-Balipratipada
+            "2026-11-24", # Prakash Gurpurb Sri Guru Nanak Dev
+            "2026-12-25"  # Christmas
+        ]
 
     def get_indices(self):
         """

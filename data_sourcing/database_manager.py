@@ -1,11 +1,20 @@
 import sqlite3
 import pandas as pd
 from datetime import datetime
+import threading
 
 class DatabaseManager:
     def __init__(self, db_name='sos_master_data.db'):
         self.db_name = db_name
-        self.conn = None
+        self._local = threading.local()
+
+    @property
+    def conn(self):
+        return getattr(self._local, 'conn', None)
+
+    @conn.setter
+    def conn(self, value):
+        self._local.conn = value
 
     def _normalize_df_timestamps(self, df, column='timestamp'):
         """Normalizes timestamps in a DataFrame to the nearest minute (seconds=00)."""
@@ -32,12 +41,14 @@ class DatabaseManager:
             return dt.floor('min').replace(second=59).strftime('%Y-%m-%d %H:%M:%S')
 
     def __enter__(self):
-        self.conn = sqlite3.connect(self.db_name)
+        # Using check_same_thread=False with thread-local storage provides maximum compatibility
+        self.conn = sqlite3.connect(self.db_name, check_same_thread=False)
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb):
         if self.conn:
             self.conn.close()
+            self.conn = None
 
     def _execute_query(self, query, params=(), commit=False):
         with self as db:
