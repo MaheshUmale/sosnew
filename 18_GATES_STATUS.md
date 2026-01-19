@@ -38,7 +38,7 @@ The SOS Scalping Engine aims to implement 18 distinct high-probability scalping 
 
 1.  **Regime-Based Scaling**: Enhanced multipliers for high-conviction regimes (COMPLETE_BULLISH/BEARISH).
 2.  **PCR Filter**: Added mandatory PCR checks to every gate to ensure alignment with option chain buildup.
-3.  **Momentum Confirmation**: Integrated RSI (55+ for Long, 45- for Short) into high-momentum gates (BigDog, Volume Spike).
+3.  **Momentum Confirmation**: Integrated Volume and Price action confirmation into high-momentum gates. (RSI filters removed as per user instruction).
 4.  **Trailing SL**: Added logic to move SL to break-even when 50% of the TP target is achieved.
 5.  **Time-Based Exits**: Implemented a 30-minute hard cut-off for scalps to prevent holding during theta decay.
 6.  **Side-by-Side Visualization**: New `run_ui.py` allows analyzing index and option candles together with trade markers.

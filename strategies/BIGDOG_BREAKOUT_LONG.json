@@ -48,8 +48,7 @@
             "id": "TRIGGER",
             "conditions": [
                 "close > vars.range_high",
-                "volume > moving_avg(history, 20, 'volume') * 1.8",
-                "rsi(history, 14) > 55"
+                "volume > moving_avg(history, 20, 'volume') * 1.8"
             ],
             "capture": {},
             "timeout": 5

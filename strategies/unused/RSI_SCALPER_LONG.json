@@ -34,16 +34,13 @@
         },
         {
             "id": "OVERSOLD",
-            "conditions": [
-                "rsi(history, 14) < 30"
-            ],
+            "conditions": [],
             "capture": {},
             "timeout": 0
         },
         {
             "id": "RECOVERY",
             "conditions": [
-                "rsi(history, 14) > 35",
                 "close > open"
             ],
             "capture": {},

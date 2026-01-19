@@ -23,6 +23,7 @@ class Trade:
     trade_id: str
     pattern_id: str
     symbol: str
+    instrument_key: str
     side: TradeSide
     entry_time: datetime
     entry_price: float
@@ -30,6 +31,11 @@ class Trade:
     exit_price: Optional[float] = None
     stop_loss: Optional[float] = None
     take_profit: Optional[float] = None
+    sl_price: Optional[float] = None
+    tp_price: Optional[float] = None
+    quantity: int = 1
+    status: str = 'OPEN'
+    exit_reason: Optional[str] = None
     outcome: TradeOutcome = TradeOutcome.IN_PROGRESS
 
 @dataclass
@@ -44,3 +50,4 @@ class Position:
     stop_loss: float
     take_profit: float
     trade_id: str
+    quantity: int = 1

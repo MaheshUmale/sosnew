@@ -18,7 +18,12 @@ except ImportError:
     from python_engine.core.trade_logger import TradeLog
 
 # Configuration
-DB_PATH = 'sos_master_data.db'
+try:
+    from python_engine.engine_config import Config
+    Config.load('config.json')
+    DB_PATH = Config.get('db_path', 'sos_master_data.db')
+except:
+    DB_PATH = 'sos_master_data.db'
 
 def get_db_connection():
     conn = sqlite3.connect(DB_PATH)
