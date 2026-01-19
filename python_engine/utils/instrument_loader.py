@@ -5,10 +5,35 @@ import io
 
 class InstrumentLoader:
     def get_upstox_instruments(self, symbols=["NIFTY", "BANKNIFTY"], spot_prices={"NIFTY": 0, "BANKNIFTY": 0}):
-        # 1. Download and Load Instrument Master (NSE_FO for Futures and Options)
-        url = "https://assets.upstox.com/market-quote/instruments/exchange/NSE.json.gz"
-        response = requests.get(url)
-        with gzip.GzipFile(fileobj=io.BytesIO(response.content)) as f:
+        # 1. Load Instrument Master (from cache if available)
+        cache_file = "upstox_instruments.json.gz"
+        import os
+        import time
+        cache_age_seconds = 24 * 60 * 60
+
+        content = None
+        if os.path.exists(cache_file) and (time.time() - os.path.getmtime(cache_file)) < cache_age_seconds:
+            try:
+                with open(cache_file, "rb") as f: content = f.read()
+            except: pass
+
+        if not content:
+            url = "https://assets.upstox.com/market-quote/instruments/exchange/NSE.json.gz"
+            try:
+                print(f"[InstrumentLoader] Downloading instrument master from {url}...")
+                response = requests.get(url, timeout=60)
+                content = response.content
+                with open(cache_file, "wb") as f: f.write(content)
+            except Exception as e:
+                print(f"[InstrumentLoader] Download failed: {e}")
+                if os.path.exists(cache_file):
+                    with open(cache_file, "rb") as f: content = f.read()
+
+        if not content:
+            print("[InstrumentLoader] ERROR: Could not get instrument master")
+            return {}
+
+        with gzip.GzipFile(fileobj=io.BytesIO(content)) as f:
             df = pd.read_json(f)
 
         full_mapping = {}
