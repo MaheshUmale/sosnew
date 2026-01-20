@@ -11,7 +11,7 @@ def generate_consolidated_report():
     # Load config to get DB path
     try:
         Config.load('config.json')
-    except:
+    except Exception:
         pass
     db_path = Config.get('db_path', 'sos_master_data.db')
 

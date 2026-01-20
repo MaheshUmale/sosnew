@@ -76,7 +76,7 @@ class MongoParser:
                 try:
                     expiry_dt = pd.to_datetime(expiry_str)
                     expiry_iso = expiry_dt.strftime('%Y-%m-%d')
-                except:
+                except Exception:
                     expiry_iso = expiry_str
 
                 if underlying not in underlying_chains:
