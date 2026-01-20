@@ -167,7 +167,7 @@ class DataManager:
 
         # Fetch remote
         if date:
-            candles = self.get_historical_candles(symbol, from_date=date, to_date=date, n_bars=1)
+            candles = self.get_historical_candles(symbol, from_date=date, to_date=date, n_bars=1, mode=mode)
             spot_price = candles.iloc[-1]['close'] if candles is not None and not candles.empty else None
         else:
             spot_price = self.get_last_traded_price(symbol)
@@ -291,10 +291,24 @@ class DataManager:
                 return float(stats.iloc[-1]['pcr'])
         except Exception as e: pass
         if mode == 'backtest': return 1.0
-        data = self.nse_client.get_option_chain(symbol, indices=True)
-        if data and data.get('filtered'):
-            ce, pe = data['filtered'].get('CE', {}).get('totOI', 0), data['filtered'].get('PE', {}).get('totOI', 0)
-            if ce > 0: return round(pe / ce, 2)
+        # Fallback to calculating from most recent option chain in DB or Live
+        try:
+            data = self.nse_client.get_option_chain(symbol, indices=True)
+            if data and data.get('filtered'):
+                ce, pe = data['filtered'].get('CE', {}).get('totOI', 0), data['filtered'].get('PE', {}).get('totOI', 0)
+                if ce > 0: return round(pe / ce, 2)
+        except: pass
+
+        # Upstox/DB Fallback
+        try:
+            chain = self.get_option_chain(symbol, mode=mode)
+            if chain:
+                df = pd.DataFrame(chain)
+                ce_oi = df['call_oi'].sum()
+                pe_oi = df['put_oi'].sum()
+                if ce_oi > 0: return round(pe_oi / ce_oi, 2)
+        except: pass
+
         return 1.0
 
     def get_current_sentiment(self, symbol, timestamp=None, mode='backtest'):
@@ -317,7 +331,25 @@ class DataManager:
             stats = self.db_manager.get_market_stats(symbol, date_str, pd.to_datetime(timestamp, unit='s').strftime('%Y-%m-%d %H:%M:%S'))
             if not stats.empty: smart_trend = stats.iloc[-1].get('smart_trend', 'Neutral')
         except Exception as e: pass
-        return Sentiment(pcr=pcr, advances=0, declines=0, pcr_velocity=0.0, oi_wall_above=oi_above, oi_wall_below=oi_below, smart_trend=smart_trend)
+        sentiment = Sentiment(pcr=pcr, advances=0, declines=0, pcr_velocity=0.0, oi_wall_above=oi_above, oi_wall_below=oi_below, smart_trend=smart_trend)
+
+        # Store live stats in DB for visualization
+        if mode == 'live' and timestamp:
+            if symbol not in ['NSE|INDEX|NIFTY', 'NSE|INDEX|BANKNIFTY']: return sentiment
+            try:
+                ts_str = datetime.fromtimestamp(timestamp).strftime('%Y-%m-%d %H:%M:%S')
+                # print(f"[DataManager] Storing live stats for {symbol} at {ts_str}")
+                stats_df = pd.DataFrame([{
+                    'timestamp': ts_str,
+                    'pcr': pcr, 'oi_wall_above': oi_above, 'oi_wall_below': oi_below,
+                    'smart_trend': smart_trend,
+                    'call_oi': 0, 'put_oi': 0, 'pcr_velocity': 0, 'advances': 0, 'declines': 0
+                }])
+                self.db_manager.store_market_stats(symbol, stats_df)
+            except Exception as e:
+                print(f"[DataManager] Error storing live stats: {e}")
+
+        return sentiment
 
     def get_option_delta(self, instrument_key):
         """Returns the delta for the given option instrument key from the DB."""
