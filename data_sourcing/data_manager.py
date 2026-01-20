@@ -146,6 +146,7 @@ class DataManager:
                         data_to_store = df
             except Exception as e: pass
 
+        else: print(f'[DataManager] Failed to fetch remote for {canonical_symbol}')
         if data_to_store is not None and not data_to_store.empty:
             self.db_manager.store_historical_candles(canonical_symbol, exchange, interval, data_to_store)
             return data_to_store.tail(n_bars)
