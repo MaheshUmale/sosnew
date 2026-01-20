@@ -17,7 +17,7 @@ class InstrumentLoader:
         if os.path.exists(cache_file) and (time.time() - os.path.getmtime(cache_file)) < cache_age_seconds:
             try:
                 with open(cache_file, "rb") as f: content = f.read()
-            except: pass
+            except Exception: pass
 
         if not content:
             url = "https://assets.upstox.com/market-quote/instruments/exchange/NSE.json.gz"

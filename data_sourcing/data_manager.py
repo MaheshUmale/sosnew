@@ -297,7 +297,7 @@ class DataManager:
             if data and data.get('filtered'):
                 ce, pe = data['filtered'].get('CE', {}).get('totOI', 0), data['filtered'].get('PE', {}).get('totOI', 0)
                 if ce > 0: return round(pe / ce, 2)
-        except: pass
+        except Exception: pass
 
         # Upstox/DB Fallback
         try:
@@ -307,7 +307,7 @@ class DataManager:
                 ce_oi = df['call_oi'].sum()
                 pe_oi = df['put_oi'].sum()
                 if ce_oi > 0: return round(pe_oi / ce_oi, 2)
-        except: pass
+        except Exception: pass
 
         return 1.0
 
